@@ -12,6 +12,8 @@ export const SettingKeys = {
   tunnelName: 'tunnel.name',
   /** Ingress rules Burrow wrote, as `hostname|path` keys, so orphans can be recognised. */
   managedIngress: 'tunnel.managed_ingress',
+  /** Hostnames this Burrow instance created a Cloudflare Access application for. */
+  managedAccess: 'access.managed_hostnames',
 } as const;
 
 /** Typed JSON key/value store on top of the `settings` table. */

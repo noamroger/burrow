@@ -352,6 +352,17 @@ function HostnameLink({ host }: { host: ProxyHost }) {
         className="group inline-flex max-w-full items-center gap-1.5 font-medium text-fg hover:text-accent"
       >
         <span className="truncate">{host.hostname}</span>
+        {host.access.enabled ? (
+          <span
+            className="inline-flex shrink-0 text-accent"
+            title={t('hosts.protected', {
+              count: host.access.emails.length + host.access.emailDomains.length,
+            })}
+          >
+            <Icon name="shield" size={13} />
+            <span className="sr-only">{t('hosts.protectedSr')}</span>
+          </span>
+        ) : null}
         <Icon
           name="externalLink"
           size={13}

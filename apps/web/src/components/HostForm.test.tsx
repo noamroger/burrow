@@ -53,7 +53,78 @@ describe('HostForm', () => {
       path: '',
       enabled: true,
       options: { noTLSVerify: false, httpHostHeader: '', originServerName: '' },
+      access: { enabled: false, emails: [], emailDomains: [], sessionDuration: '24h' },
     });
+  });
+
+  it('protects a host with Cloudflare Access: emails, domains and session length', async () => {
+    const { user, onSubmit } = setup();
+    await user.type(screen.getByLabelText('Subdomain'), 'nas');
+    await user.type(screen.getByLabelText('Service URL'), 'http://192.168.1.20:5000');
+    expect(screen.queryByLabelText('Allowed emails')).not.toBeInTheDocument();
+
+    await user.click(screen.getByLabelText(/Require sign-in/));
+    await user.click(screen.getByRole('button', { name: 'Create host' }));
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByText(/at least one allowed email/i)).toBeInTheDocument();
+
+    await user.type(
+      screen.getByLabelText('Allowed emails'),
+      'me@example.com{enter}Friend@Example.net',
+    );
+    await user.type(screen.getByLabelText('Allowed email domains'), '@family.example');
+    await user.selectOptions(screen.getByLabelText('Stay signed in for'), '1 week');
+    expect(screen.getByText(/every path of nas\.example\.com/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Create host' }));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        access: {
+          enabled: true,
+          emails: ['me@example.com', 'Friend@Example.net'],
+          emailDomains: ['@family.example'],
+          sessionDuration: '168h',
+        },
+      }),
+    );
+  });
+
+  it('shows an invalid email on the emails field', async () => {
+    const { user, onSubmit } = setup();
+    await user.type(screen.getByLabelText('Subdomain'), 'nas');
+    await user.type(screen.getByLabelText('Service URL'), 'http://nas:5000');
+    await user.click(screen.getByLabelText(/Require sign-in/));
+    await user.type(screen.getByLabelText('Allowed emails'), 'not-an-email');
+    await user.click(screen.getByRole('button', { name: 'Create host' }));
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Allowed emails')).toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('loads the protection of an existing host', () => {
+    setup({
+      host: makeHost({
+        access: {
+          enabled: true,
+          emails: ['me@example.com'],
+          emailDomains: [],
+          sessionDuration: '6h',
+        },
+      }),
+    });
+    expect(screen.getByLabelText('Allowed emails')).toHaveValue('me@example.com');
+    expect(screen.getByLabelText('Stay signed in for')).toHaveValue('6h');
+  });
+
+  it('explains Access conflicts returned by the API', async () => {
+    const onSubmit = vi.fn(async () => {
+      throw new ApiRequestError(409, 'ACCESS_CONFLICT', 'covered by "My NAS"');
+    });
+    const user = userEvent.setup();
+    render(<HostForm zones={zones} host={makeHost()} onSubmit={onSubmit} onCancel={() => {}} />);
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+    expect(
+      await screen.findByText('nas.example.com is already protected by another Access application'),
+    ).toBeInTheDocument();
   });
 
   it('explains DNS conflicts returned by the API', async () => {

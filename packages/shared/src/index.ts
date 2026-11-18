@@ -42,6 +42,7 @@ export const ERROR_CODES = [
   'CLOUDFLARE_PERMISSION_MISSING',
   'CLOUDFLARE_API_ERROR',
   'DNS_CONFLICT',
+  'ACCESS_CONFLICT',
   'INTERNAL_ERROR',
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
@@ -116,6 +117,8 @@ export const permissionCheckSchema = z.object({
   name: z.string(),
   ok: z.boolean(),
   message: z.string().optional(),
+  /** Optional permissions only unlock a feature (e.g. Cloudflare Access); saving works without them. */
+  optional: z.boolean().optional(),
 });
 export type PermissionCheck = z.infer<typeof permissionCheckSchema>;
 
@@ -234,6 +237,73 @@ export const serviceUrlSchema = z
 /** Path regex as understood by cloudflared, e.g. `^/api`. Empty = all paths. */
 export const ingressPathSchema = z.string().trim().max(512);
 
+/* ---- Cloudflare Access (Zero Trust) ---- */
+
+/** Session lengths offered for Access-protected hosts (Cloudflare duration strings). */
+export const ACCESS_SESSION_DURATIONS = ['30m', '6h', '12h', '24h', '168h', '720h'] as const;
+export const accessSessionDurationSchema = z.enum(ACCESS_SESSION_DURATIONS);
+export type AccessSessionDuration = z.infer<typeof accessSessionDurationSchema>;
+
+/** Maximum number of emails + email domains on one host. */
+export const ACCESS_MAX_RULES = 50;
+
+const accessEmailSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .email('Enter a valid email address')
+  .max(254);
+
+/** An email domain such as `example.com` (a leading `@` is accepted and removed). */
+const accessEmailDomainSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .regex(
+    /^@?[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/,
+    'Enter a domain such as example.com',
+  )
+  .transform((d) => d.replace(/^@/, ''));
+
+/**
+ * Cloudflare Access protection for a host. When enabled, visitors must sign
+ * in (one-time PIN by email, or any identity provider set up in Zero Trust)
+ * and match one of the allowed emails or email domains.
+ */
+export const accessSettingsInputSchema = z
+  .object({
+    enabled: z.boolean().optional().default(false),
+    emails: z.array(accessEmailSchema).optional().default([]),
+    emailDomains: z.array(accessEmailDomainSchema).optional().default([]),
+    sessionDuration: accessSessionDurationSchema.optional().default('24h'),
+  })
+  .superRefine((value, ctx) => {
+    const total = value.emails.length + value.emailDomains.length;
+    if (value.enabled && total === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['emails'],
+        message: 'Add at least one allowed email or email domain',
+      });
+    }
+    if (total > ACCESS_MAX_RULES) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['emails'],
+        message: `Use at most ${ACCESS_MAX_RULES} emails and domains in total`,
+      });
+    }
+  });
+export type AccessSettingsInput = z.input<typeof accessSettingsInputSchema>;
+
+export const accessSettingsSchema = z.object({
+  enabled: z.boolean(),
+  emails: z.array(z.string()),
+  emailDomains: z.array(z.string()),
+  sessionDuration: accessSessionDurationSchema,
+});
+export type AccessSettings = z.infer<typeof accessSettingsSchema>;
+
 export const proxyHostInputSchema = z.object({
   subdomain: subdomainSchema,
   zoneId: z.string().regex(/^[a-f0-9]{32}$/),
@@ -248,6 +318,8 @@ export const proxyHostInputSchema = z.object({
     })
     .optional()
     .default({}),
+  /** Cloudflare Access protection. Applies to the whole hostname (every path). */
+  access: accessSettingsInputSchema.optional().default({}),
 });
 /** POST /api/hosts body. PUT /api/hosts/:id body (full replace). */
 export type ProxyHostInput = z.input<typeof proxyHostInputSchema>;
@@ -286,6 +358,7 @@ export const proxyHostSchema = z.object({
     httpHostHeader: z.string(),
     originServerName: z.string(),
   }),
+  access: accessSettingsSchema,
   sync: z.object({
     status: syncStatusSchema,
     error: z.string().nullable(),
@@ -303,7 +376,7 @@ export type ProxyHostList = z.infer<typeof proxyHostListSchema>;
 
 /**
  * GET    /api/hosts/:id          -> 200 ProxyHost
- * POST   /api/hosts              -> 201 ProxyHost   (409 DNS_CONFLICT / CONFLICT)
+ * POST   /api/hosts              -> 201 ProxyHost   (409 DNS_CONFLICT / ACCESS_CONFLICT / CONFLICT)
  * PUT    /api/hosts/:id          -> 200 ProxyHost
  * DELETE /api/hosts/:id          -> 204
  * POST   /api/hosts/:id/check    -> 200 OriginHealth (probe now)
@@ -321,6 +394,10 @@ export const syncActionSchema = z.object({
     'dns.delete',
     'tunnel.create',
     'host.conflict',
+    'access.create',
+    'access.update',
+    'access.delete',
+    'access.conflict',
   ]),
   target: z.string(),
   ok: z.boolean(),
@@ -391,6 +468,14 @@ export function dnsOwnershipComment(tunnelId: string): string {
 }
 export const DNS_OWNERSHIP_PREFIX = 'managed-by:burrow';
 
+/** Prefix of the names Burrow gives to the Access applications and policies it owns. */
+export const ACCESS_OWNERSHIP_PREFIX = '[Burrow] ';
+
+/** Name of the Access application and policy Burrow creates for a hostname. */
+export function accessResourceName(hostname: string): string {
+  return `${ACCESS_OWNERSHIP_PREFIX}${hostname.toLowerCase()}`;
+}
+
 /** Least-privilege token permissions, shown in the UI and in the README. */
 export const REQUIRED_TOKEN_PERMISSIONS = [
   {
@@ -412,4 +497,11 @@ export const REQUIRED_TOKEN_PERMISSIONS = [
     why: 'Create the CNAME record for each host',
   },
   { scope: 'Zone', group: 'Zone', level: 'Read', why: 'List your domains' },
+  {
+    scope: 'Account',
+    group: 'Access: Apps and Policies',
+    level: 'Edit',
+    why: 'Optional: protect private hosts with Cloudflare Access (sign-in required)',
+    optional: true,
+  },
 ] as const;

@@ -62,6 +62,17 @@ export const proxyHosts = sqliteTable(
     httpHostHeader: text('http_host_header').notNull().default(''),
     originServerName: text('origin_server_name').notNull().default(''),
     enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+    /** Cloudflare Access protection (one Access application per hostname, see docs/adr/0005). */
+    accessEnabled: integer('access_enabled', { mode: 'boolean' }).notNull().default(false),
+    accessEmails: text('access_emails', { mode: 'json' })
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'`),
+    accessEmailDomains: text('access_email_domains', { mode: 'json' })
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'`),
+    accessSessionDuration: text('access_session_duration').notNull().default('24h'),
     dnsRecordId: text('dns_record_id'),
     syncStatus: text('sync_status', { enum: ['pending', 'synced', 'error', 'drift'] })
       .notNull()

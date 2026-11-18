@@ -2,6 +2,10 @@ import type { Logger } from 'pino';
 import { AppError } from '../lib/errors.js';
 import { sleep } from '../lib/time.js';
 import type {
+  CfAccessApp,
+  CfAccessAppInput,
+  CfAccessPolicy,
+  CfAccessPolicyInput,
   CfAccount,
   CfConnector,
   CfDnsRecord,
@@ -304,6 +308,51 @@ export class CloudflareClient {
 
   deleteDnsRecord(zoneId: string, recordId: string): Promise<{ id: string }> {
     return this.request('DELETE', `/zones/${zoneId}/dns_records/${recordId}`);
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* Access (Zero Trust): applications and reusable policies           */
+  /* Permission: Account › Access: Apps and Policies › Edit            */
+  /* ---------------------------------------------------------------- */
+
+  listAccessApps(accountId: string): Promise<CfAccessApp[]> {
+    return this.paginate<CfAccessApp>(`/accounts/${accountId}/access/apps`);
+  }
+
+  createAccessApp(accountId: string, app: CfAccessAppInput): Promise<CfAccessApp> {
+    return this.request('POST', `/accounts/${accountId}/access/apps`, { body: app });
+  }
+
+  /** Replace an application (PUT needs the full body). */
+  updateAccessApp(accountId: string, appId: string, app: CfAccessAppInput): Promise<CfAccessApp> {
+    return this.request('PUT', `/accounts/${accountId}/access/apps/${appId}`, { body: app });
+  }
+
+  deleteAccessApp(accountId: string, appId: string): Promise<{ id: string }> {
+    return this.request('DELETE', `/accounts/${accountId}/access/apps/${appId}`);
+  }
+
+  listAccessPolicies(accountId: string): Promise<CfAccessPolicy[]> {
+    return this.paginate<CfAccessPolicy>(`/accounts/${accountId}/access/policies`);
+  }
+
+  createAccessPolicy(accountId: string, policy: CfAccessPolicyInput): Promise<CfAccessPolicy> {
+    return this.request('POST', `/accounts/${accountId}/access/policies`, { body: policy });
+  }
+
+  updateAccessPolicy(
+    accountId: string,
+    policyId: string,
+    policy: CfAccessPolicyInput,
+  ): Promise<CfAccessPolicy> {
+    return this.request('PUT', `/accounts/${accountId}/access/policies/${policyId}`, {
+      body: policy,
+    });
+  }
+
+  /** Fails while an application still uses the policy: delete the application first. */
+  deleteAccessPolicy(accountId: string, policyId: string): Promise<{ id: string }> {
+    return this.request('DELETE', `/accounts/${accountId}/access/policies/${policyId}`);
   }
 }
 

@@ -116,11 +116,13 @@ export const en = {
   'token.checksTitle': 'Permission check',
   'token.checkOk': 'granted',
   'token.checkMissing': 'missing',
+  'token.checkOptional': 'not granted (optional)',
   'token.checksFix':
     'Edit the token on the Cloudflare dashboard to add the missing permissions, then verify again.',
   'token.step1': 'Open',
   'token.step2': 'Click "Create Token", then "Create Custom Token".',
-  'token.step3': 'Add the four permissions listed below.',
+  'token.step3':
+    'Add the four required permissions listed below, plus the optional Access one if you want to protect private hosts with a sign-in.',
   'token.step4':
     'Under "Account Resources" and "Zone Resources", pick your account and your domains.',
   'token.step5': 'Create the token, copy it and paste it here. Cloudflare shows it only once.',
@@ -174,6 +176,8 @@ export const en = {
   'hosts.checkNow': 'Check {hostname} now',
   'hosts.checkUp': '{hostname} answered in {ms} ms.',
   'hosts.checkDown': '{hostname} is unreachable: {error}',
+  'hosts.protected': 'Protected by Cloudflare Access ({count} allowed rules)',
+  'hosts.protectedSr': '(sign-in required)',
   'hosts.edit': 'Edit {hostname}',
   'hosts.delete': 'Delete {hostname}',
   'hosts.deleteTitle': 'Delete this proxy host?',
@@ -219,6 +223,26 @@ export const en = {
   'host.saveFailed': 'The host could not be saved',
   'host.conflictTitle': 'This hostname is already used',
   'host.dnsConflictTitle': '{hostname} already has a DNS record',
+  'host.access.legend': 'Cloudflare Access',
+  'host.access.enabled': 'Require sign-in (Cloudflare Access)',
+  'host.access.enabledHint':
+    'Visitors must prove who they are with Cloudflare before reaching the service: a one-time code sent by email, or any login method set up in Zero Trust.',
+  'host.access.emails': 'Allowed emails',
+  'host.access.emailsHint': 'One per line. Only these people can sign in.',
+  'host.access.emailDomains': 'Allowed email domains',
+  'host.access.emailDomainsHint':
+    'Anyone with an address at these domains can sign in, e.g. family.example. Separate several with commas.',
+  'host.access.sessionDuration': 'Stay signed in for',
+  'host.access.sessionDurationHint': 'After this, visitors sign in again.',
+  'host.access.duration.30m': '30 minutes',
+  'host.access.duration.6h': '6 hours',
+  'host.access.duration.12h': '12 hours',
+  'host.access.duration.24h': '24 hours',
+  'host.access.duration.168h': '1 week',
+  'host.access.duration.720h': '30 days',
+  'host.access.wholeHostname':
+    'Protection applies to every path of {hostname}. Burrow creates an Access application and policy named "[Burrow] {hostname}" in your Zero Trust dashboard; edit them in Burrow, not there.',
+  'host.access.conflictTitle': '{hostname} is already protected by another Access application',
   'host.dnsConflictBody':
     'A DNS record with this name exists in Cloudflare and was not created by Burrow, so Burrow will not overwrite it. Delete or rename that record on the Cloudflare dashboard, or choose another subdomain.',
 
