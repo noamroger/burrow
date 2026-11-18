@@ -107,14 +107,22 @@ jobs:
 
           \`\`\`sh
           docker pull ghcr.io/noamroger/burrow:${version}
-          docker pull noamroger/burrow:${version}
           \`\`\`
 
           Multi-arch (linux/amd64, linux/arm64). Digest: \`${DIGEST}\`
           EOF
-          gh release create "$TAG" \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "$TAG" \
-            --generate-notes \
-            --notes-file notes.md \
-            $prerelease
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            # The release was created by hand on github.com (which also creates
+            # the tag): keep its notes and append the image details.
+            gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body > existing.md
+            printf '\n\n' >> existing.md
+            cat notes.md >> existing.md
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file existing.md
+          else
+            gh release create "$TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$TAG" \
+              --generate-notes \
+              --notes-file notes.md \
+              $prerelease
+          fi
