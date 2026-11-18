@@ -243,7 +243,9 @@ describe('Cloudflare Access', () => {
     // Drift: app of nas deleted by hand, policy of old edited, a foreign app untouched.
     const nasApp = apps().find((a) => a.domain === 'nas.example.com')!;
     t.mock.state.accessApps = apps().filter((a) => a !== nasApp);
-    policies().find((p) => p.name.endsWith('old.example.com'))!.include = [{ everyone: {} }];
+    policies().find((p) => p.name === accessResourceName('old.example.com'))!.include = [
+      { everyone: {} },
+    ];
     t.mock.addAccessApp({ name: 'Wiki', domain: 'wiki.example.com' });
     // old is deleted from the DB while Cloudflare is down: its app becomes an orphan.
     t.mock.failNext('GET', /\/cfd_tunnel\/[^/]+\/configurations$/, 500, 4);
