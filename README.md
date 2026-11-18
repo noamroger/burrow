@@ -100,8 +100,6 @@ docker compose up -d
 That's it. Your service is online at `https://<name>.<your-domain>`, with
 HTTPS handled by Cloudflare.
 
-> The image is also on Docker Hub: `docker.io/noamroger/burrow`.
-
 ## The Cloudflare API token
 
 Burrow needs an API token to manage your tunnel and DNS records. Give it

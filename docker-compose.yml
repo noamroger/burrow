@@ -9,7 +9,6 @@
 services:
   burrow:
     image: ghcr.io/noamroger/burrow:latest
-    # Or from Docker Hub: image: noamroger/burrow:latest
     container_name: burrow
     restart: unless-stopped
 

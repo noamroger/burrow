@@ -209,7 +209,7 @@ checksums from the `tini-static-<arch>.sha256sum` assets of the release.
 ## Releases
 
 Maintainers release by pushing a `vX.Y.Z` tag on `main`. The release workflow
-builds the multi-arch image, pushes it to GHCR and Docker Hub with SBOM and
+builds the multi-arch image, pushes it to GHCR with SBOM and
 provenance, and creates the GitHub release with generated notes.
 
 ## Questions?
