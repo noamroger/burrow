@@ -1,0 +1,38 @@
+import { eq } from 'drizzle-orm';
+import type { Db } from './client.js';
+import { settings } from './schema.js';
+
+/** Known settings keys. */
+export const SettingKeys = {
+  cloudflareToken: 'cloudflare.token',
+  cloudflareAccountId: 'cloudflare.account_id',
+  cloudflareAccountName: 'cloudflare.account_name',
+  cloudflarePermissions: 'cloudflare.permissions',
+  tunnelId: 'tunnel.id',
+  tunnelName: 'tunnel.name',
+  /** Ingress rules Burrow wrote, as `hostname|path` keys, so orphans can be recognised. */
+  managedIngress: 'tunnel.managed_ingress',
+} as const;
+
+/** Typed JSON key/value store on top of the `settings` table. */
+export class SettingsRepository {
+  constructor(private readonly db: Db) {}
+
+  get<T>(key: string): T | undefined {
+    const row = this.db.select().from(settings).where(eq(settings.key, key)).get();
+    return row ? (JSON.parse(row.value) as T) : undefined;
+  }
+
+  set(key: string, value: unknown): void {
+    const json = JSON.stringify(value);
+    this.db
+      .insert(settings)
+      .values({ key, value: json })
+      .onConflictDoUpdate({ target: settings.key, set: { value: json } })
+      .run();
+  }
+
+  delete(...keys: string[]): void {
+    for (const key of keys) this.db.delete(settings).where(eq(settings.key, key)).run();
+  }
+}

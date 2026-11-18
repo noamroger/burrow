@@ -16,7 +16,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm -r test"
+    "test": "pnpm -r test",
+    "dev:mock": "pnpm --filter @burrow/shared build && pnpm --parallel --filter @burrow/server --filter @burrow/web run \"/^(mock:cf|dev:mock)$/\""
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

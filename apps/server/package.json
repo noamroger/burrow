@@ -1,0 +1,42 @@
+{
+  "name": "@burrow/server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Burrow API server: Fastify, SQLite and the cloudflared supervisor.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.build.json && node scripts/copy-migrations.mjs",
+    "start": "node dist/index.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate",
+    "mock:cf": "tsx scripts/mock-cloudflare.ts",
+    "dev:mock": "DATA_DIR=./.data CLOUDFLARE_API_BASE=http://127.0.0.1:8787/client/v4 CLOUDFLARED_PATH=./test/fixtures/fake-cloudflared.sh LOG_LEVEL=debug tsx watch src/index.ts"
+  },
+  "dependencies": {
+    "@burrow/shared": "workspace:*",
+    "@fastify/cookie": "^11.1.5",
+    "@fastify/helmet": "^13.2.0",
+    "@fastify/rate-limit": "^11.2.2",
+    "@fastify/static": "^10.1.11",
+    "@node-rs/argon2": "^2.2.2",
+    "better-sqlite3": "^13.2.0",
+    "drizzle-orm": "^0.45.4",
+    "fastify": "^5.12.8",
+    "pino": "^10.4.0",
+    "secure-json-parse": "^4.1.1",
+    "undici": "^8.12.4",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^22.20.5",
+    "drizzle-kit": "^0.31.11",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
+  }
+}
