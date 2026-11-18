@@ -45,9 +45,56 @@ Permission: **DNS Write** (Zone).
 | List accounts | `GET /accounts`                                                                                                  | Account › Account Settings › Read |
 | Verify token  | `GET /user/tokens/verify` (user-owned token) or `GET /accounts/{account_id}/tokens/verify` (account-owned token) | none                              |
 
+## Access (Zero Trust): applications and reusable policies
+
+Permission: **Access: Apps and Policies Write** (Account), shown as
+"Account › Access: Apps and Policies › Edit" in the token UI. Optional:
+Burrow only calls these endpoints once a host is protected.
+
+| Purpose        | Request                                                     | Notes                                                                                                              |
+| -------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| List apps      | `GET /accounts/{account_id}/access/apps`                    | Paginated. Each app has `id`, `name`, `type`, `domain`, `destinations[]`, `session_duration`, `aud`, `policies[]`. |
+| Create app     | `POST /accounts/{account_id}/access/apps`                   | Body below. `domain` is required; `destinations` supersedes the deprecated `self_hosted_domains`.                  |
+| Replace app    | `PUT /accounts/{account_id}/access/apps/{app_id}`           | Full body, same as create.                                                                                         |
+| Delete app     | `DELETE /accounts/{account_id}/access/apps/{app_id}`        | The reusable policy survives: delete it afterwards.                                                                |
+| List policies  | `GET /accounts/{account_id}/access/policies`                | Reusable policies: `id`, `name`, `decision`, `include[]`, `exclude[]`, `require[]`, `app_count`.                   |
+| Create policy  | `POST /accounts/{account_id}/access/policies`               | `{ name, decision: "allow", include: [...], exclude: [], require: [] }`.                                           |
+| Replace policy | `PUT /accounts/{account_id}/access/policies/{policy_id}`    |                                                                                                                    |
+| Delete policy  | `DELETE /accounts/{account_id}/access/policies/{policy_id}` | Fails while an application still uses it.                                                                          |
+
+Self-hosted application body Burrow sends:
+
+```json
+{
+  "name": "[Burrow] nas.example.com",
+  "type": "self_hosted",
+  "domain": "nas.example.com",
+  "destinations": [{ "type": "public", "uri": "nas.example.com" }],
+  "session_duration": "24h",
+  "app_launcher_visible": false,
+  "policies": [{ "id": "<policy uuid>", "precedence": 1 }]
+}
+```
+
+Rule shapes used in `include`: `{ "email": { "email": "me@example.com" } }`
+and `{ "email_domain": { "domain": "example.com" } }`. `decision` can be
+`allow`, `deny`, `non_identity` or `bypass`; Burrow only writes `allow`.
+
+Notes:
+
+- **Legacy (app-scoped) policies cannot be attached to new applications**:
+  Burrow uses reusable policies (`/access/policies`) and links them by id.
+  `policies` also accepts plain id strings or inline objects, but reusable
+  and inline policies are mutually exclusive.
+- Access needs a Zero Trust organization (team name) on the account. It is
+  created the first time someone opens Zero Trust in the dashboard.
+- A self-hosted app on a hostname protects every path of it. Access picks the
+  most specific application when several match.
+
 ## Minimum token for Burrow
 
 - Account › **Cloudflare Tunnel** › Edit
 - Account › **Account Settings** › Read
 - Zone › **DNS** › Edit (only the zones you want to use)
 - Zone › **Zone** › Read (same zones)
+- Optional: Account › **Access: Apps and Policies** › Edit (private hosts)

@@ -45,6 +45,10 @@ When you remove the service, Burrow removes the route and the DNS record.
   Raspberry Pi).
 - **Proxy hosts in a few clicks**: subdomain, domain, internal URL. Optional
   path, `noTLSVerify`, `httpHostHeader` and `originServerName` settings.
+- **Private hosts with Zero Trust**: tick "Require sign-in" and list who may
+  open a service (emails or whole email domains). Burrow creates the
+  Cloudflare Access application and policy, so visitors sign in with a
+  one-time code before they reach your service.
 - **DNS handled for you**: Burrow creates the `CNAME` records and only ever
   touches records it created itself.
 - **cloudflared supervision**: automatic start, restart with backoff, live
@@ -65,6 +69,10 @@ When you remove the service, Burrow removes the route and the DNS record.
 | Tunnel and live logs                                        | First-run setup                                  |
 | ----------------------------------------------------------- | ------------------------------------------------ |
 | ![Tunnel status and logs](docs/screenshots/tunnel-logs.png) | ![Token setup](docs/screenshots/setup-token.png) |
+
+| Private host (Cloudflare Access)                               |
+| -------------------------------------------------------------- |
+| ![Require sign-in on a host](docs/screenshots/host-access.png) |
 
 ## Quick start (2 minutes)
 
@@ -114,17 +122,61 @@ Burrow needs an API token to manage your tunnel and DNS records. Give it
 | Zone    | DNS               | Edit   | Create the CNAME record for each host   |
 | Zone    | Zone              | Read   | List your domains                       |
 
+Optional, only if you want private hosts (see
+[Private hosts with Cloudflare Access](#private-hosts-with-cloudflare-access)):
+
+| Scope   | Permission                | Access | Why                                          |
+| ------- | ------------------------- | ------ | -------------------------------------------- |
+| Account | Access: Apps and Policies | Edit   | Create the Access application and its policy |
+
 **How to create it:**
 
 1. Go to [dash.cloudflare.com/profile/api-tokens](https://dash.cloudflare.com/profile/api-tokens).
 2. Click **Create Token**, then **Create Custom Token**.
-3. Add the four permissions above.
+3. Add the four permissions above (plus the optional Access one if you want
+   private hosts).
 4. Under **Zone Resources**, pick **Specific zone** and choose only the
    domains you want to use with Burrow.
 5. Create the token and paste it into Burrow.
 
 Burrow encrypts the token (AES-256-GCM) before saving it, never shows it
 again, and never writes it to the logs.
+
+## Private hosts with Cloudflare Access
+
+Some services should not be open to the whole internet: a NAS, Grafana, an
+admin panel. Edit the host, tick **Require sign-in (Cloudflare Access)** and
+list the allowed emails (or a whole domain such as `family.example`).
+
+Visitors then see a Cloudflare sign-in page first. With the default login
+method they type their email and receive a one-time code; only the addresses
+you listed get one. Your service never sees a request from anyone else.
+
+**Before the first private host:**
+
+1. Add the optional **Account › Access: Apps and Policies › Edit** permission
+   to your token (Settings › Cloudflare token, then save it again so Burrow
+   checks it).
+2. If you never used Zero Trust on this account, open
+   [Zero Trust](https://one.dash.cloudflare.com/) once and pick a team name.
+   The free plan is enough (up to 50 users).
+
+**What Burrow does:** for each protected hostname, it creates a reusable
+Access policy ("allow" these emails and domains) and a self-hosted Access
+application linked to it, both named `[Burrow] <hostname>`. The application
+is created **before** the hostname is published, and removed only **after**
+the route is gone, so a private host is never public, even for a second. If
+the application cannot be created, the host is not published.
+
+**Good to know:**
+
+- Protection covers the whole hostname. Hosts that share a hostname with
+  different paths share one application: their allowed lists are merged and
+  the shortest session wins.
+- Burrow never edits Access applications it did not create. If one already
+  covers the hostname, Burrow refuses to protect it and tells you which one.
+- Change the settings in Burrow, not in the Zero Trust dashboard: the next
+  sync puts Burrow's version back.
 
 ## Configuration
 
@@ -231,8 +283,8 @@ Cloudflare dashboard, then click **Sync now**.
 <summary><strong>Should I expose the Burrow UI through the tunnel?</strong></summary>
 
 It is safer to keep it on your LAN or behind a VPN like Tailscale. If you
-publish it, protect it with Cloudflare Access (managing Access from Burrow is
-on the roadmap).
+publish it, tick **Require sign-in (Cloudflare Access)** on that host and
+allow only your own email.
 </details>
 
 ## How it works
@@ -259,11 +311,15 @@ Read more in [docs/architecture.md](docs/architecture.md) and the
 synced routes and DNS, cloudflared supervision with live logs, health
 checks, multi-arch image.
 
+**v0.2**: private hosts protected by Cloudflare Access (allowed emails and
+email domains, session length).
+
 **Next:**
 
 - [ ] Docker auto-discovery with labels (`burrow.host=app.example.com`,
       `burrow.port=3000`), read-only socket, optional
-- [ ] Cloudflare Access applications and policies ("only my email can open this")
+- [x] Cloudflare Access applications and policies ("only my email can open this")
+- [ ] More Access rules (identity provider groups, countries, service tokens)
 - [ ] Several tunnels, import an existing tunnel
 - [ ] Config export and import
 - [ ] Documented REST API (OpenAPI)
