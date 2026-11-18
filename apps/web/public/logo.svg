@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Burrow">
+  <title>Burrow</title>
+  <!-- Mound of earth -->
+  <rect width="64" height="64" rx="14" fill="#B5562F"/>
+  <path d="M0 46c10-3 21-4 32-4s22 1 32 4v4c0 7.7-6.3 14-14 14H14C6.3 64 0 57.7 0 50z" fill="#8E3F1F"/>
+  <!-- Tunnel entrance -->
+  <path d="M16 46V35c0-8.8 7.2-16 16-16s16 7.2 16 16v11z" fill="#2A1A12"/>
+  <path d="M22 46V36c0-5.5 4.5-10 10-10s10 4.5 10 10v10z" fill="#1A0F0A"/>
+  <!-- Light at the end of the tunnel -->
+  <circle cx="32" cy="38" r="3.2" fill="#F4C27A"/>
+  <!-- Ground line -->
+  <path d="M8 46h48" stroke="#F3E3D3" stroke-width="2.5" stroke-linecap="round"/>
+</svg>

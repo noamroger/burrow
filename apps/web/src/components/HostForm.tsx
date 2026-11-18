@@ -1,0 +1,370 @@
+/**
+ * Create / edit form for a proxy host.
+ *
+ * Validation uses the same zod schema as the server (`proxyHostInputSchema`),
+ * so the user sees the server's rules before submitting. API errors are shown
+ * at the top of the form; DNS_CONFLICT gets a dedicated explanation.
+ */
+import { useId, useMemo, useState, type FormEvent } from 'react';
+import {
+  buildHostname,
+  proxyHostInputSchema,
+  type ProxyHost,
+  type ProxyHostInput,
+  type Zone,
+} from '@burrow/shared';
+import { isApiError } from '../api/client';
+import { t } from '../i18n';
+import { errorMessage } from '../lib/errors';
+import { fieldErrors } from '../lib/zod';
+import { Icon } from './Icon';
+import { Alert } from './ui/Alert';
+import { Button } from './ui/Button';
+import { Checkbox, describedBy, Field, Input, Select } from './ui/Field';
+
+export interface HostFormValues {
+  subdomain: string;
+  zoneId: string;
+  service: string;
+  path: string;
+  enabled: boolean;
+  noTLSVerify: boolean;
+  httpHostHeader: string;
+  originServerName: string;
+}
+
+export const SERVICE_EXAMPLES = [
+  { url: 'http://192.168.1.20:8080', label: 'host.serviceExampleLan' },
+  { url: 'http://my-container:3000', label: 'host.serviceExampleDocker' },
+  { url: 'http://100.64.0.10', label: 'host.serviceExampleTailscale' },
+] as const;
+
+export function initialValues(host: ProxyHost | undefined, zones: Zone[]): HostFormValues {
+  if (host) {
+    return {
+      subdomain: host.subdomain,
+      zoneId: host.zoneId,
+      service: host.service,
+      path: host.path,
+      enabled: host.enabled,
+      noTLSVerify: host.options.noTLSVerify,
+      httpHostHeader: host.options.httpHostHeader,
+      originServerName: host.options.originServerName,
+    };
+  }
+  return {
+    subdomain: '',
+    zoneId: zones[0]?.id ?? '',
+    service: '',
+    path: '',
+    enabled: true,
+    noTLSVerify: false,
+    httpHostHeader: '',
+    originServerName: '',
+  };
+}
+
+export function toInput(values: HostFormValues): ProxyHostInput {
+  return {
+    subdomain: values.subdomain,
+    zoneId: values.zoneId,
+    service: values.service,
+    path: values.path,
+    enabled: values.enabled,
+    options: {
+      noTLSVerify: values.noTLSVerify,
+      httpHostHeader: values.httpHostHeader,
+      originServerName: values.originServerName,
+    },
+  };
+}
+
+/** Field errors for the form, keyed like the zod paths (`options.httpHostHeader`). */
+export function validateHost(values: HostFormValues): Record<string, string> {
+  const result = proxyHostInputSchema.safeParse(toInput(values));
+  if (result.success) return {};
+  const errors = fieldErrors(result.error);
+  // The schema's zoneId message is a regex failure: make it human.
+  if (errors.zoneId) errors.zoneId = t('host.zoneRequired');
+  if (errors.subdomain && values.subdomain.trim() === '')
+    errors.subdomain = t('host.subdomainRequired');
+  if (errors.service && values.service.trim() === '') errors.service = t('host.serviceRequired');
+  return errors;
+}
+
+export interface HostFormProps {
+  host?: ProxyHost;
+  /** Zones the host can be published in (enabled zones). */
+  zones: Zone[];
+  onSubmit: (input: ProxyHostInput) => Promise<unknown>;
+  onCancel: () => void;
+}
+
+export function HostForm({ host, zones, onSubmit, onCancel }: HostFormProps) {
+  const uid = useId();
+  const id = (name: string) => `${uid}-${name}`;
+  const [values, setValues] = useState(() => initialValues(host, zones));
+  const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [serverError, setServerError] = useState<unknown>(null);
+
+  // Editing a host whose zone was disabled since: keep it selectable.
+  const zoneOptions = useMemo(() => {
+    if (!host || zones.some((z) => z.id === host.zoneId)) return zones;
+    return [...zones, { id: host.zoneId, name: host.zoneName, enabled: false, hostCount: 0 }];
+  }, [host, zones]);
+
+  const zone = zoneOptions.find((z) => z.id === values.zoneId);
+  const errors = submitted ? validateHost(values) : {};
+  const fqdn = zone ? buildHostname(values.subdomain || '', zone.name) : '';
+
+  const set = <K extends keyof HostFormValues>(key: K, value: HostFormValues[K]) =>
+    setValues((v) => ({ ...v, [key]: value }));
+
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    setSubmitted(true);
+    setServerError(null);
+    if (Object.keys(validateHost(values)).length > 0) return;
+    setSubmitting(true);
+    try {
+      await onSubmit(toInput(values));
+    } catch (error) {
+      setServerError(error);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const advancedSet =
+    values.noTLSVerify || values.httpHostHeader !== '' || values.originServerName !== '';
+
+  return (
+    <form onSubmit={handleSubmit} noValidate className="space-y-5">
+      {serverError ? <ServerError error={serverError} hostname={fqdn} /> : null}
+
+      <fieldset className="space-y-2">
+        <legend className="mb-1.5 text-sm font-medium text-fg">{t('host.publicHostname')}</legend>
+        <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-start">
+          <div>
+            <label htmlFor={id('subdomain')} className="sr-only">
+              {t('host.subdomain')}
+            </label>
+            <Input
+              id={id('subdomain')}
+              value={values.subdomain}
+              onChange={(e) => set('subdomain', e.target.value)}
+              placeholder={t('host.subdomainPlaceholder')}
+              autoComplete="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              aria-invalid={!!errors.subdomain}
+              aria-describedby={describedBy(id('subdomain'), { error: errors.subdomain })}
+            />
+            {errors.subdomain ? (
+              <p
+                id={`${id('subdomain')}-error`}
+                className="mt-1.5 text-xs font-medium text-danger"
+                role="alert"
+              >
+                {errors.subdomain}
+              </p>
+            ) : null}
+          </div>
+          <span className="hidden h-10 items-center text-lg text-fg-muted sm:flex" aria-hidden>
+            .
+          </span>
+          <div>
+            <label htmlFor={id('zone')} className="sr-only">
+              {t('host.zone')}
+            </label>
+            <Select
+              id={id('zone')}
+              value={values.zoneId}
+              onChange={(e) => set('zoneId', e.target.value)}
+              aria-invalid={!!errors.zoneId}
+              aria-describedby={describedBy(id('zone'), { error: errors.zoneId })}
+            >
+              {zoneOptions.length === 0 ? <option value="">{t('host.noZones')}</option> : null}
+              {zoneOptions.map((z) => (
+                <option key={z.id} value={z.id}>
+                  {z.name}
+                </option>
+              ))}
+            </Select>
+            {errors.zoneId ? (
+              <p
+                id={`${id('zone')}-error`}
+                className="mt-1.5 text-xs font-medium text-danger"
+                role="alert"
+              >
+                {errors.zoneId}
+              </p>
+            ) : null}
+          </div>
+        </div>
+        <p
+          className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-fg-muted"
+          aria-live="polite"
+        >
+          <span>{t('host.fqdnPreview')}</span>
+          <code
+            data-testid="fqdn-preview"
+            className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[13px] text-fg"
+          >
+            https://{fqdn || '…'}
+            {values.path ? (
+              <span className="text-fg-muted">{values.path.replace(/^\^/, '')}</span>
+            ) : null}
+          </code>
+        </p>
+        <p className="text-xs text-fg-muted">{t('host.subdomainHint')}</p>
+      </fieldset>
+
+      <Field
+        id={id('service')}
+        label={t('host.service')}
+        error={errors.service}
+        hint={
+          <span className="flex flex-wrap items-center gap-1.5">
+            <span>{t('host.serviceExamples')}</span>
+            {SERVICE_EXAMPLES.map((ex) => (
+              <button
+                key={ex.url}
+                type="button"
+                onClick={() => set('service', ex.url)}
+                className="rounded border border-border bg-surface-2 px-1.5 py-0.5 font-mono text-[11px] text-fg hover:border-accent"
+                title={t(ex.label)}
+              >
+                {ex.url}
+              </button>
+            ))}
+          </span>
+        }
+      >
+        <Input
+          id={id('service')}
+          value={values.service}
+          onChange={(e) => set('service', e.target.value)}
+          placeholder="http://192.168.1.20:8080"
+          inputMode="url"
+          autoComplete="off"
+          autoCapitalize="none"
+          spellCheck={false}
+          className="font-mono"
+          aria-invalid={!!errors.service}
+          aria-describedby={describedBy(id('service'), { hint: true, error: errors.service })}
+        />
+      </Field>
+
+      <Field
+        id={id('path')}
+        label={t('host.path')}
+        aside={t('common.optional')}
+        error={errors.path}
+        hint={t('host.pathHint')}
+      >
+        <Input
+          id={id('path')}
+          value={values.path}
+          onChange={(e) => set('path', e.target.value)}
+          placeholder="^/api"
+          autoComplete="off"
+          spellCheck={false}
+          className="font-mono"
+          aria-describedby={describedBy(id('path'), { hint: true, error: errors.path })}
+        />
+      </Field>
+
+      <details className="group rounded-lg border border-border" open={advancedSet || undefined}>
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3.5 py-2.5 text-sm font-medium text-fg select-none">
+          <span>{t('host.advanced')}</span>
+          <Icon
+            name="chevronDown"
+            className="text-fg-muted transition-transform group-open:rotate-180"
+          />
+        </summary>
+        <div className="space-y-4 border-t border-border px-3.5 py-4">
+          <Checkbox
+            id={id('noTLSVerify')}
+            checked={values.noTLSVerify}
+            onChange={(e) => set('noTLSVerify', e.target.checked)}
+            label={<code className="font-mono">noTLSVerify</code>}
+            description={t('host.noTLSVerifyHint')}
+          />
+          <Field
+            id={id('httpHostHeader')}
+            label={<code className="font-mono">httpHostHeader</code>}
+            hint={t('host.httpHostHeaderHint')}
+            error={errors['options.httpHostHeader']}
+          >
+            <Input
+              id={id('httpHostHeader')}
+              value={values.httpHostHeader}
+              onChange={(e) => set('httpHostHeader', e.target.value)}
+              placeholder="app.internal"
+              autoComplete="off"
+              spellCheck={false}
+              aria-describedby={describedBy(id('httpHostHeader'), { hint: true })}
+            />
+          </Field>
+          <Field
+            id={id('originServerName')}
+            label={<code className="font-mono">originServerName</code>}
+            hint={t('host.originServerNameHint')}
+            error={errors['options.originServerName']}
+          >
+            <Input
+              id={id('originServerName')}
+              value={values.originServerName}
+              onChange={(e) => set('originServerName', e.target.value)}
+              placeholder="app.internal"
+              autoComplete="off"
+              spellCheck={false}
+              aria-describedby={describedBy(id('originServerName'), { hint: true })}
+            />
+          </Field>
+          <Checkbox
+            id={id('enabled')}
+            checked={values.enabled}
+            onChange={(e) => set('enabled', e.target.checked)}
+            label={t('host.enabled')}
+            description={t('host.enabledHint')}
+          />
+        </div>
+      </details>
+
+      <div className="sticky -bottom-5 -mx-5 -mb-5 flex flex-col-reverse gap-2 border-t border-border bg-surface px-5 py-3.5 sm:flex-row sm:justify-end sm:rounded-b-2xl">
+        <Button variant="secondary" onClick={onCancel} disabled={submitting}>
+          {t('common.cancel')}
+        </Button>
+        <Button type="submit" loading={submitting}>
+          {host ? t('host.save') : t('host.create')}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+function ServerError({ error, hostname }: { error: unknown; hostname: string }) {
+  if (isApiError(error, 'DNS_CONFLICT')) {
+    return (
+      <Alert tone="danger" title={t('host.dnsConflictTitle', { hostname })}>
+        <p>{t('host.dnsConflictBody')}</p>
+        {error.message ? <p className="mt-1 text-xs opacity-80">{error.message}</p> : null}
+      </Alert>
+    );
+  }
+  if (isApiError(error, 'CONFLICT')) {
+    return (
+      <Alert tone="danger" title={t('host.conflictTitle')}>
+        {error.message}
+      </Alert>
+    );
+  }
+  return (
+    <Alert tone="danger" title={t('host.saveFailed')}>
+      {errorMessage(error)}
+    </Alert>
+  );
+}
