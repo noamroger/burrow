@@ -1,0 +1,5 @@
+# Hadolint configuration (https://github.com/hadolint/hadolint)
+ignored:
+  # Base images come from `ARG NODE_IMAGE=node:22-bookworm-slim`, which is
+  # pinned (Renovate bumps it). Hadolint cannot resolve ARGs in FROM lines.
+  - DL3006
