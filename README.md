@@ -13,6 +13,7 @@
   <a href="https://github.com/noamroger/burrow/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/noamroger/burrow/actions/workflows/ci.yml/badge.svg"></a>
   <a href="https://github.com/noamroger/burrow/pkgs/container/burrow"><img alt="GHCR" src="https://img.shields.io/badge/ghcr.io-noamroger%2Fburrow-blue?logo=docker"></a>
   <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-green"></a>
+  <a href="https://buymeacoffee.com/noamroger"><img alt="Buy me a coffee" src="https://img.shields.io/badge/Buy%20me%20a%20coffee-support-FFDD00?logo=buymeacoffee&logoColor=black"></a>
 </p>
 
 ---
@@ -293,6 +294,12 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide (project layout,
 tests, commit style, how to add a database migration). Please also read our
 [Code of Conduct](CODE_OF_CONDUCT.md). To report a security issue, see
 [SECURITY.md](SECURITY.md).
+
+## Support the project
+
+Burrow is free and open source. If it saves you time, you can
+[buy me a coffee](https://buymeacoffee.com/noamroger) ☕. Starring the repo
+and reporting bugs help a lot too.
 
 ## Acknowledgements
 

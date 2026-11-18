@@ -38,6 +38,7 @@ export const en = {
 
   'footer.tagline': 'MIT licensed',
   'footer.github': 'GitHub',
+  'footer.sponsor': 'Buy me a coffee',
 
   'theme.label': 'Theme',
   'theme.system': 'System',

@@ -15,6 +15,7 @@ import { IconButton } from './ui/Button';
 import { tunnelTone } from './TunnelStatusBadge';
 
 export const GITHUB_URL = 'https://github.com/noamroger/burrow';
+export const SPONSOR_URL = 'https://buymeacoffee.com/noamroger';
 
 const NAV: Array<{ to: string; label: MessageKey; icon: IconName; end?: boolean }> = [
   { to: '/', label: 'nav.hosts', icon: 'globe', end: true },
@@ -163,15 +164,26 @@ export function Footer() {
         <span className="mx-1.5">·</span>
         {t('footer.tagline')}
       </span>
-      <a
-        href={GITHUB_URL}
-        target="_blank"
-        rel="noreferrer"
-        className="inline-flex items-center gap-1.5 hover:text-fg"
-      >
-        <Icon name="github" size={14} />
-        {t('footer.github')}
-      </a>
+      <span className="inline-flex items-center gap-4">
+        <a
+          href={SPONSOR_URL}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1.5 hover:text-fg"
+        >
+          <Icon name="coffee" size={14} />
+          {t('footer.sponsor')}
+        </a>
+        <a
+          href={GITHUB_URL}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1.5 hover:text-fg"
+        >
+          <Icon name="github" size={14} />
+          {t('footer.github')}
+        </a>
+      </span>
     </footer>
   );
 }
