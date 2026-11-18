@@ -1,0 +1,36 @@
+# Build and run Burrow from your local checkout.
+#
+#   docker compose -f docker-compose.dev.yml up --build
+#
+# Equivalent without compose:
+#   docker build -t burrow:dev .
+#   docker run --rm -p 8080:8080 -v burrow-dev-data:/data burrow:dev
+#
+# Multi-arch build (needs a buildx builder with QEMU for the other arch):
+#   docker buildx build --platform linux/amd64,linux/arm64 -t burrow:dev .
+
+services:
+  burrow:
+    build:
+      context: .
+      args:
+        VERSION: dev
+    image: burrow:dev
+    ports:
+      - '127.0.0.1:8080:8080'
+    volumes:
+      # A named volume avoids host permission issues (owned by uid 1000).
+      - burrow-dev-data:/data
+    environment:
+      TZ: UTC
+      LOG_LEVEL: debug
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  burrow-dev-data:

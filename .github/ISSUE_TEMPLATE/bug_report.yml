@@ -1,0 +1,101 @@
+name: Bug report
+description: Something does not work as expected.
+labels: ['bug', 'triage']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug!
+        **Security issue?** Do not open a public issue: see [SECURITY.md](https://github.com/noamroger/burrow/blob/main/SECURITY.md).
+        **Never paste your Cloudflare API token, tunnel token or `BURROW_SECRET`.**
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug, and what you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Add a proxy host `app.example.com` -> `http://192.168.1.20:8080`
+        2. Click "Save"
+        3. See error ...
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Burrow version
+      description: Image tag or digest (shown in the dashboard footer and in `docker inspect`).
+      placeholder: 'ghcr.io/noamroger/burrow:0.1.0'
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment
+      options:
+        - Docker Compose
+        - docker run
+        - Portainer / other Docker UI
+        - Kubernetes
+        - Built from source
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: arch
+    attributes:
+      label: Architecture
+      options:
+        - amd64 (x86_64)
+        - arm64 (Raspberry Pi 4/5, Apple Silicon, ...)
+
+  - type: dropdown
+    id: network
+    attributes:
+      label: Network mode
+      description: How does Burrow reach your services?
+      options:
+        - Default bridge network
+        - Shared Docker network with the services
+        - Host network
+        - Not relevant
+
+  - type: textarea
+    id: compose
+    attributes:
+      label: docker-compose.yml / docker run command
+      description: Remove any secrets first.
+      render: yaml
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Output of `docker logs burrow` and/or the cloudflared logs from the dashboard. Remove any secrets first.
+      render: text
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Screenshots, Cloudflare setup details (zone plan, existing tunnels), browser, etc.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues and this is not a duplicate.
+          required: true
+        - label: I removed all secrets (API token, tunnel token, BURROW_SECRET) from this report.
+          required: true

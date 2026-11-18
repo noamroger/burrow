@@ -1,0 +1,74 @@
+# Burrow: example deployment.
+#
+#   mkdir -p data && sudo chown 1000:1000 data   # the container runs as uid 1000
+#   docker compose up -d
+#   open http://<this-host>:8080 and create the admin account
+#
+# Full documentation: https://github.com/noamroger/burrow#readme
+
+services:
+  burrow:
+    image: ghcr.io/noamroger/burrow:latest
+    # Or from Docker Hub: image: noamroger/burrow:latest
+    container_name: burrow
+    restart: unless-stopped
+
+    ports:
+      # The dashboard controls what you publish on the Internet: never expose
+      # it publicly. Bind it to localhost or to a LAN / Tailscale address,
+      # e.g. "127.0.0.1:8080:8080" or "192.168.1.10:8080:8080".
+      # You can also publish Burrow itself through the tunnel and protect it
+      # with Cloudflare Access.
+      - '8080:8080'
+
+    volumes:
+      # SQLite database, encryption key and state. Back this directory up.
+      - ./data:/data
+
+    environment:
+      TZ: Europe/Paris
+      # Optional. Key used to encrypt the Cloudflare API token at rest
+      # (32+ random characters, e.g. `openssl rand -base64 48`). If unset, a
+      # random key is generated once into /data/.secret. Setting it keeps the
+      # key out of the data directory (and out of your backups).
+      # BURROW_SECRET: change-me-to-a-long-random-string
+      # Force the Secure flag on the session cookie. By default it is set
+      # automatically when Burrow is reached over HTTPS.
+      # BURROW_SECURE_COOKIES: "true"
+      # Behind a reverse proxy (or when Burrow itself is published through
+      # the tunnel), trust X-Forwarded-* headers from one hop:
+      # TRUST_PROXY: "1"
+
+    # Hardening: Burrow only writes to /data and /tmp.
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+    # --- Reaching your services -------------------------------------------
+    # Burrow (and cloudflared inside it) connects to the origin URLs you
+    # configure, from inside this container:
+    #
+    # 1. Services on the LAN (http://192.168.1.20:8080): works out of the box
+    #    with the default bridge network.
+    #
+    # 2. Other containers by name (http://my-app:3000): put Burrow on the same
+    #    Docker network. Uncomment the "networks" blocks below and create the
+    #    network once with `docker network create proxy` (or reuse an
+    #    existing one), then attach your apps to it too.
+    #
+    # networks:
+    #   - proxy
+    #
+    # 3. Services on the host itself or on Tailscale IPs (100.x.y.z): use the
+    #    host network. Remove the "ports" section above (the dashboard then
+    #    listens directly on the host's port 8080; change it with PORT).
+    #
+    # network_mode: host
+
+# networks:
+#   proxy:
+#     external: true

@@ -1,0 +1,68 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    "helpers:pinGitHubActionDigests",
+    ":semanticCommits",
+    ":semanticCommitTypeAll(chore)"
+  ],
+  "timezone": "Europe/Paris",
+  "schedule": ["before 6am on monday"],
+  "labels": ["dependencies"],
+  "rangeStrategy": "bump",
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on the first day of the month"]
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Pinned binaries in the Dockerfile (cloudflared, tini)",
+      "managerFilePatterns": ["/(^|/)Dockerfile$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>[a-z-]+?) depName=(?<depName>[^\\s]+?)(?: versioning=(?<versioning>[^\\s]+?))?\\s+ARG [A-Z_]+_VERSION=(?<currentValue>[^\\s]+)"
+      ]
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Group minor and patch updates of npm packages into one PR",
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "npm minor and patch",
+      "groupSlug": "npm-minor-patch"
+    },
+    {
+      "description": "Automerge patch updates of devDependencies once CI is green",
+      "matchManagers": ["npm"],
+      "matchDepTypes": ["devDependencies"],
+      "matchUpdateTypes": ["patch"],
+      "groupName": "npm dev patch",
+      "groupSlug": "npm-dev-patch",
+      "automerge": true
+    },
+    {
+      "description": "Group GitHub Actions minor/patch/digest updates",
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["minor", "patch", "digest", "pinDigest"],
+      "groupName": "github actions"
+    },
+    {
+      "description": "Stay on Node.js 22 LTS in the Docker image until we decide to move",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["node"],
+      "allowedVersions": "<23",
+      "pinDigests": true
+    },
+    {
+      "description": "cloudflared and tini: the SHA-256 checksums in the Dockerfile must be updated too",
+      "matchManagers": ["custom.regex"],
+      "matchFileNames": ["Dockerfile"],
+      "automerge": false,
+      "labels": ["dependencies", "docker"],
+      "prBodyNotes": [
+        "⚠️ **Update the checksums before merging.** The Docker build verifies SHA-256 checksums and will fail until they match. For cloudflared run `docker/update-cloudflared.sh` on this branch and commit the result (see CONTRIBUTING.md). For tini, copy the values from the `*.sha256sum` assets of the release."
+      ]
+    }
+  ]
+}
