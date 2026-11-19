@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react';
 import { REQUIRED_TOKEN_PERMISSIONS, type PermissionCheck } from '@burrow/shared';
 import { t } from '../i18n';
 import { cn } from '../lib/cn';
@@ -59,98 +58,46 @@ export function RequiredPermissionsTable() {
   );
 }
 
-/** A value to pick in one of the Cloudflare dashboard dropdowns, drawn like a select. */
-function DropdownValue({ children }: { children: string }) {
-  return (
-    <span className="inline-flex items-center gap-1 rounded-md border border-border bg-surface px-2 py-0.5 text-xs font-medium whitespace-nowrap text-fg shadow-sm">
-      {children}
-      <Icon name="chevronDown" size={11} className="text-fg-muted" />
-    </span>
-  );
-}
-
-function Step({ n, title, children }: { n: number; title: string; children?: ReactNode }) {
-  return (
-    <li className="flex gap-3">
-      <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-accent-soft text-xs font-semibold text-accent">
-        {n}
-      </span>
-      <div className="min-w-0 flex-1 space-y-2 pt-0.5">
-        <p className="leading-relaxed text-fg">{title}</p>
-        {children}
-      </div>
-    </li>
-  );
-}
-
-/**
- * Step-by-step instructions to create the token on the Cloudflare dashboard,
- * written against the labels of the "Create Custom Token" page. Shown in the
- * first-run setup and in the "Replace token" dialog.
- */
+/** Step-by-step instructions to create the token on the Cloudflare dashboard. */
 export function TokenGuide() {
+  const steps = [
+    t('token.step1'),
+    t('token.step2'),
+    t('token.step3'),
+    t('token.step4'),
+    t('token.step5'),
+  ];
   return (
-    <ol className="space-y-4 text-sm">
-      <Step n={1} title={t('token.guide.open')}>
-        <a
-          href={API_TOKENS_URL}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-1 font-medium break-all text-accent underline underline-offset-2"
-        >
-          dash.cloudflare.com/profile/api-tokens
-          <Icon name="externalLink" size={12} />
-        </a>
-      </Step>
-      <Step n={2} title={t('token.guide.custom')} />
-      <Step n={3} title={t('token.guide.permissions')}>
-        <ul className="space-y-2" aria-label={t('token.permissionsCaption')}>
-          {REQUIRED_TOKEN_PERMISSIONS.map((p) => (
-            <li
-              key={`${p.scope}-${p.group}`}
-              className="rounded-lg border border-border bg-surface-2/60 px-3 py-2"
-            >
-              <div className="flex flex-wrap items-center gap-1.5">
-                <DropdownValue>{p.scope}</DropdownValue>
-                <DropdownValue>{p.group}</DropdownValue>
-                <DropdownValue>{p.level}</DropdownValue>
-                {'optional' in p && p.optional ? (
-                  <span className="rounded bg-surface px-1.5 py-0.5 text-[11px] text-fg-muted">
-                    {t('common.optional')}
-                  </span>
-                ) : null}
-              </div>
-              <p className="mt-1 text-xs text-fg-muted">{p.why}</p>
-            </li>
-          ))}
-        </ul>
-        <p className="flex gap-2 rounded-lg bg-accent-soft/60 px-3 py-2 text-xs leading-relaxed text-fg">
-          <Icon name="info" size={14} className="mt-px shrink-0 text-accent" />
-          <span>{t('token.guide.zoneTip')}</span>
-        </p>
-      </Step>
-      <Step n={4} title={t('token.guide.resources')}>
-        <dl className="space-y-1.5 text-xs">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <dt className="w-full font-medium text-fg-muted sm:w-36">Account Resources</dt>
-            <dd className="flex flex-wrap items-center gap-1.5">
-              <DropdownValue>Include</DropdownValue>
-              <DropdownValue>{t('token.guide.yourAccount')}</DropdownValue>
-            </dd>
-          </div>
-          <div className="flex flex-wrap items-center gap-1.5">
-            <dt className="w-full font-medium text-fg-muted sm:w-36">Zone Resources</dt>
-            <dd className="flex flex-wrap items-center gap-1.5">
-              <DropdownValue>Include</DropdownValue>
-              <DropdownValue>Specific zone</DropdownValue>
-              <DropdownValue>{t('token.guide.yourDomain')}</DropdownValue>
-            </dd>
-          </div>
-        </dl>
-        <p className="text-xs text-fg-muted">{t('token.guide.resourcesHint')}</p>
-      </Step>
-      <Step n={5} title={t('token.guide.create')} />
-    </ol>
+    <div className="space-y-3">
+      <ol className="space-y-2 text-sm text-fg">
+        {steps.map((step, i) => (
+          <li key={i} className="flex gap-3">
+            <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-accent-soft text-xs font-semibold text-accent">
+              {i + 1}
+            </span>
+            <span className="pt-0.5 leading-relaxed">
+              {i === 0 ? (
+                <>
+                  {step}{' '}
+                  <a
+                    href={API_TOKENS_URL}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 font-medium text-accent underline underline-offset-2"
+                  >
+                    dash.cloudflare.com/profile/api-tokens
+                    <Icon name="externalLink" size={12} />
+                  </a>
+                </>
+              ) : (
+                step
+              )}
+            </span>
+          </li>
+        ))}
+      </ol>
+      <p className="text-xs text-fg-muted">{t('token.dashboardHint')}</p>
+    </div>
   );
 }
 
