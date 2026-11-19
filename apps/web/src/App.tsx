@@ -5,6 +5,7 @@
  *   /login     sign in
  *   /          proxy hosts        ┐
  *   /tunnel    tunnel + live logs ├ require a session and a configured token
+ *   /monitoring uptime history     │
  *   /settings  settings           ┘
  */
 import { useEffect, useState } from 'react';
@@ -25,6 +26,8 @@ import { ToastProvider } from './components/ui/Toast';
 import { FullPageSpinner, FullPageError } from './pages/FullPage';
 import { HostsPage } from './pages/HostsPage';
 import { LoginPage } from './pages/LoginPage';
+import { MonitorDetailPage } from './pages/MonitorDetailPage';
+import { MonitoringPage } from './pages/MonitoringPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { SetupPage } from './pages/SetupPage';
@@ -90,6 +93,8 @@ export function AppRoutes() {
           <Route element={<Layout />}>
             <Route index element={<HostsPage />} />
             <Route path="/tunnel" element={<TunnelPage />} />
+            <Route path="/monitoring" element={<MonitoringPage />} />
+            <Route path="/monitoring/:id" element={<MonitorDetailPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Route>

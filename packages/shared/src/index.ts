@@ -15,6 +15,7 @@ import { templateIdSchema } from './templates.js';
 
 export * from './templates.js';
 export * from './maintenance.js';
+export * from './monitoring.js';
 
 /* ------------------------------------------------------------------ */
 /* Common                                                              */

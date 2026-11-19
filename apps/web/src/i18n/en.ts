@@ -17,6 +17,7 @@ export const en = {
   'common.retry': 'Retry',
 
   'time.justNow': 'just now',
+  'time.now': 'now',
 
   'errors.network': 'Cannot reach the Burrow server. Check that the container is running.',
   'errors.rateLimited': 'Too many attempts. Wait a minute and try again.',
@@ -30,6 +31,7 @@ export const en = {
   'nav.main': 'Main',
   'nav.hosts': 'Proxy hosts',
   'nav.tunnel': 'Tunnels',
+  'nav.monitoring': 'Monitoring',
   'nav.settings': 'Settings',
   'nav.logout': 'Log out',
   'nav.openMenu': 'Open menu',
@@ -664,6 +666,65 @@ export const en = {
   'backups.download': 'Download {name}',
   'backups.restoreHint':
     'To restore: stop Burrow, unzip the file to burrow.db in the data folder, start Burrow. The Cloudflare token inside is encrypted with this instance key (/data/.secret or BURROW_SECRET): keep a copy of it too.',
+
+  /* Monitoring */
+  'monitoring.title': 'Monitoring',
+  'monitoring.description':
+    'Burrow probes every enabled host every {interval} s from inside the container and keeps {days} days of history.',
+  'monitoring.descriptionOff':
+    'Health checks are turned off (HEALTHCHECK_INTERVAL_SECONDS=0): no new history is recorded.',
+  'monitoring.downCount': '{count} down',
+  'monitoring.allUp': 'All services up',
+  'monitoring.emptyTitle': 'Nothing to monitor yet',
+  'monitoring.emptyBody': 'Publish a host and Burrow starts checking it right away.',
+  'monitoring.disabled': 'Disabled: not checked',
+  'monitoring.downFor': 'Down for {duration}',
+  'monitoring.downSince': 'Down for {duration}, since {when}',
+  'monitoring.avgLatency': '{ms} ms on average (24h)',
+  'monitoring.noData': 'No data yet',
+  'monitoring.heartbeatsLabel': 'Last {count} checks, {down} failed',
+  'monitoring.back': 'All monitors',
+  'monitoring.lastCheck': 'Last checked {when}',
+  'monitoring.range': 'Time range',
+  'monitoring.uptimeRange': 'Uptime ({range})',
+  'monitoring.avgResponse': 'Average response',
+  'monitoring.incidents': 'Incidents',
+  'monitoring.checks': 'Checks',
+  'monitoring.responseTime': 'Response time',
+  'monitoring.legendAvg': 'Average',
+  'monitoring.legendMax': 'Slowest check',
+  'monitoring.latencyChartLabel': 'Response time chart: {avg} ms on average, {max} ms at most',
+  'monitoring.uptimeBand': 'Availability',
+  'monitoring.latestChecks': 'Latest checks',
+  'monitoring.incidentsTitle': 'Incidents',
+  'monitoring.noIncidents': 'No incident in the last {range}.',
+  'monitoring.incidentResolved': 'Down for {duration}',
+  'monitoring.incidentOngoing': 'Down for {duration}, still failing',
+  'monitoring.openHistory': 'Uptime history',
+
+  /* Status badge */
+  'badge.title': 'Public status badge',
+  'badge.hint':
+    'An image with the status and the 30-day uptime, to embed in a README, a wiki or a status page.',
+  'badge.offBody':
+    'Turned off. Turning it on creates a secret URL: whoever has it sees the hostname, the status and the uptime, nothing else.',
+  'badge.enable': 'Turn on the badge',
+  'badge.disable': 'Turn off',
+  'badge.rotate': 'New URL',
+  'badge.rotateTitle': 'Replace the badge URL?',
+  'badge.disableTitle': 'Turn off the badge?',
+  'badge.confirmBody': 'Pages that embed the current URL will show a broken badge.',
+  'badge.label': 'Label',
+  'badge.theme': 'Style',
+  'badge.themeSoil': 'Soil (dark)',
+  'badge.themeChalk': 'Chalk (light)',
+  'badge.markdown': 'Markdown',
+  'badge.html': 'HTML',
+  'badge.url': 'Image URL',
+  'badge.copy': 'Copy the {what} code',
+  'badge.copied': 'Copied to the clipboard.',
+  'badge.reachHint':
+    'The badge is served by this Burrow: whoever displays it must be able to reach this address.',
 
   'settings.session': 'Session',
   'settings.signedInAs': 'Signed in as',

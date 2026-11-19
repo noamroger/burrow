@@ -141,6 +141,8 @@ export const proxyHosts = sqliteTable(
     maintenanceUntil: text('maintenance_until'),
     /** Page for this host only (MaintenancePage JSON); null = default page. */
     maintenancePage: text('maintenance_page', { mode: 'json' }).$type<MaintenancePage | null>(),
+    /** Secret token of the public status badge (`/api/badge/<token>`); null = no badge. */
+    badgeToken: text('badge_token').unique(),
     dnsRecordId: text('dns_record_id'),
     syncStatus: text('sync_status', { enum: ['pending', 'synced', 'error', 'drift'] })
       .notNull()
@@ -154,6 +156,26 @@ export const proxyHosts = sqliteTable(
     uniqueIndex('proxy_hosts_hostname_path_idx').on(t.hostname, t.path),
     index('proxy_hosts_zone_idx').on(t.zoneId),
   ],
+);
+
+/**
+ * Health probe results, kept `MONITORING_RETENTION_DAYS` for uptime history.
+ * `checkedAt` is epoch milliseconds (not ISO) so ranges and buckets are cheap.
+ */
+export const healthChecks = sqliteTable(
+  'health_checks',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    hostId: integer('host_id')
+      .notNull()
+      .references(() => proxyHosts.id, { onDelete: 'cascade' }),
+    checkedAt: integer('checked_at').notNull(),
+    up: integer('up', { mode: 'boolean' }).notNull(),
+    latencyMs: integer('latency_ms'),
+    statusCode: integer('status_code'),
+    error: text('error'),
+  },
+  (t) => [index('health_checks_host_time_idx').on(t.hostId, t.checkedAt)],
 );
 
 /** Who changed what. Never contains secrets. */
@@ -172,3 +194,4 @@ export type ZoneRow = typeof zones.$inferSelect;
 export type TunnelRow = typeof tunnels.$inferSelect;
 export type ProxyHostRow = typeof proxyHosts.$inferSelect;
 export type NewProxyHostRow = typeof proxyHosts.$inferInsert;
+export type HealthCheckRow = typeof healthChecks.$inferSelect;

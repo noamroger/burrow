@@ -444,6 +444,52 @@ const ops: Operation[] = [
     body: s.configImportSchema,
     response: s.configImportReportSchema,
   },
+  /* ---- monitoring ---- */
+  {
+    method: 'get',
+    path: '/api/monitoring',
+    tag: 'Monitoring',
+    summary: 'Uptime, response time and latest probes of every host',
+    response: s.monitoringOverviewSchema,
+  },
+  {
+    method: 'get',
+    path: '/api/monitoring/hosts/{id}',
+    tag: 'Monitoring',
+    summary: 'History of one host: uptime, response time buckets and incidents',
+    query: {
+      range: { schema: s.monitoringRangeSchema, description: '24h (default), 7d or 30d' },
+    },
+    response: s.hostMonitorDetailSchema,
+  },
+  {
+    method: 'post',
+    path: '/api/monitoring/hosts/{id}/badge',
+    tag: 'Monitoring',
+    summary: 'Turn on the public status badge, or replace its secret URL',
+    response: s.badgeResponseSchema,
+  },
+  {
+    method: 'delete',
+    path: '/api/monitoring/hosts/{id}/badge',
+    tag: 'Monitoring',
+    summary: 'Turn off the public status badge',
+    response: null,
+    status: 204,
+  },
+  {
+    method: 'get',
+    path: '/api/badge/{token}',
+    tag: 'Monitoring',
+    summary: 'Public status badge (SVG image)',
+    description:
+      'Returns `image/svg+xml`, embeddable from any site. `.svg` may be appended to the token.',
+    query: {
+      label: { schema: z.string().max(40), description: 'Text on the left (default: hostname)' },
+      theme: { schema: z.enum(['soil', 'chalk']), description: 'soil (dark, default) or chalk' },
+    },
+    public: true,
+  },
   /* ---- health ---- */
   {
     method: 'get',
@@ -474,6 +520,9 @@ export function buildOpenApi(version: string): Record<string, unknown> {
   for (const op of ops) {
     const parameters: unknown[] = [];
     if (op.path.includes('{id}')) parameters.push(id);
+    if (op.path.includes('{token}')) {
+      parameters.push({ name: 'token', in: 'path', required: true, schema: { type: 'string' } });
+    }
     if (op.path.includes('{name}')) {
       parameters.push({ name: 'name', in: 'path', required: true, schema: { type: 'string' } });
     }

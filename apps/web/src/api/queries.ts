@@ -4,6 +4,7 @@
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
+  MonitoringRange,
   OriginHealth,
   ProxyHost,
   ProxyHostInput,
@@ -25,6 +26,7 @@ import {
   dockerApi,
   maintenanceApi,
   backupsApi,
+  monitoringApi,
   zonesApi,
 } from './endpoints';
 
@@ -46,6 +48,8 @@ export const queryKeys = {
   backups: ['backups'] as const,
   docker: ['docker'] as const,
   maintenancePage: ['maintenance', 'page'] as const,
+  monitoring: ['monitoring'] as const,
+  monitoringHost: (id: number, range: MonitoringRange) => ['monitoring', id, range] as const,
 };
 
 /** Polling intervals (ms). */
@@ -353,6 +357,37 @@ export function useRunBackup() {
     mutationFn: backupsApi.run,
     onSettled: () => void qc.invalidateQueries({ queryKey: queryKeys.backups }),
   });
+}
+
+/* ------------------------------ monitoring ---------------------------- */
+
+export function useMonitoring() {
+  return useQuery({
+    queryKey: queryKeys.monitoring,
+    queryFn: monitoringApi.overview,
+    refetchInterval: 30_000,
+  });
+}
+
+export function useHostMonitoring(id: number, range: MonitoringRange) {
+  return useQuery({
+    queryKey: queryKeys.monitoringHost(id, range),
+    queryFn: () => monitoringApi.host(id, range),
+    refetchInterval: 60_000,
+    placeholderData: (previous) => previous,
+  });
+}
+
+export function useBadge(id: number) {
+  const qc = useQueryClient();
+  const invalidate = () => qc.invalidateQueries({ queryKey: queryKeys.monitoring });
+  return {
+    enable: useMutation({ mutationFn: () => monitoringApi.enableBadge(id), onSuccess: invalidate }),
+    disable: useMutation({
+      mutationFn: () => monitoringApi.disableBadge(id),
+      onSuccess: invalidate,
+    }),
+  };
 }
 
 /* ------------------------------ API tokens ---------------------------- */

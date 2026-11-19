@@ -23,6 +23,7 @@ import { healthRoutes } from './routes/health.js';
 import { hostRoutes } from './routes/hosts.js';
 import { logRoutes } from './routes/logs.js';
 import { maintenanceRoutes } from './routes/maintenance.js';
+import { badgeRoutes, monitoringRoutes } from './routes/monitoring.js';
 import { tokenRoutes } from './routes/tokens.js';
 import { tunnelRoutes } from './routes/tunnel.js';
 
@@ -140,6 +141,7 @@ export async function buildApp(
   await app.register(async (scope) => {
     await healthRoutes(scope, ctx);
     await authRoutes(scope, ctx);
+    await badgeRoutes(scope, ctx);
   });
 
   // Everything else requires a session (and the CSRF header on mutations).
@@ -154,6 +156,7 @@ export async function buildApp(
     await backupRoutes(scope, ctx);
     await dockerRoutes(scope, ctx);
     await maintenanceRoutes(scope, ctx);
+    await monitoringRoutes(scope, ctx);
     await tokenRoutes(scope, ctx);
   });
 

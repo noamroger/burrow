@@ -20,6 +20,7 @@ import { HealthService } from './services/health.js';
 import { HostService } from './services/hosts.js';
 import { LogBuffer } from './services/log-buffer.js';
 import { MaintenanceService } from './services/maintenance.js';
+import { MonitoringService } from './services/monitoring.js';
 import { Reconciler } from './services/reconciler.js';
 import type { SupervisorOptions } from './services/supervisor.js';
 import { SupervisorPool } from './services/supervisors.js';
@@ -53,6 +54,7 @@ export interface AppContext {
   backups: BackupService;
   docker: DockerDiscoveryService;
   maintenance: MaintenanceService;
+  monitoring: MonitoringService;
   lifecycle: Lifecycle;
 }
 
@@ -65,6 +67,8 @@ export interface ContextOverrides {
   /** Fake Docker API for discovery tests. */
   docker?: DockerApi;
   dockerSelfHostname?: string;
+  /** Failed probes in a row before a host counts as down. */
+  failuresBeforeDown?: number;
 }
 
 /** Version from package.json (works from both `src/` and `dist/`). */
@@ -196,6 +200,15 @@ export function createContext(
       listen: config.maintenanceListen,
       origin: config.maintenanceOrigin,
     }),
+    monitoring: new MonitoringService({
+      db,
+      sqlite,
+      health,
+      logger: logger.child({ component: 'monitoring' }),
+      retentionDays: config.monitoringRetentionDays,
+      intervalSeconds: config.healthcheckIntervalSeconds,
+      failuresBeforeDown: overrides.failuresBeforeDown,
+    }),
   } as Omit<AppContext, 'lifecycle'> as AppContext;
   ctx.lifecycle = new Lifecycle(ctx);
   return ctx;
@@ -250,6 +263,8 @@ export class Lifecycle {
     void ctx.docker.scan();
     // Backups: check every 5 minutes whether one is due (the schedule is in hours).
     this.every(300, () => ctx.backups.runIfDue());
+    // Uptime history: drop what is older than the retention, every hour.
+    this.every(3600, async () => ctx.monitoring.prune());
     if (ctx.config.healthcheckIntervalSeconds > 0) {
       this.every(ctx.config.healthcheckIntervalSeconds, () => ctx.hosts.checkAll());
       void ctx.hosts.checkAll().catch(() => undefined);

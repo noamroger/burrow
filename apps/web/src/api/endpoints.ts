@@ -7,6 +7,10 @@ import {
   availableTunnelListSchema,
   configImportReportSchema,
   backupRunSchema,
+  badgeResponseSchema,
+  hostMonitorDetailSchema,
+  monitoringOverviewSchema,
+  type MonitoringRange,
   backupStatusSchema,
   type BackupSettingsInput,
   driftReportSchema,
@@ -155,6 +159,15 @@ export const backupsApi = {
   run: () => api.post('/backups', undefined, backupRunSchema),
   /** Downloaded by the browser (GET with the session cookie). */
   downloadUrl: (name: string) => `/api/backups/${encodeURIComponent(name)}`,
+};
+
+export const monitoringApi = {
+  overview: () => api.get('/monitoring', monitoringOverviewSchema),
+  host: (id: number, range: MonitoringRange) =>
+    api.get(`/monitoring/hosts/${id}?range=${range}`, hostMonitorDetailSchema),
+  enableBadge: (id: number) =>
+    api.post(`/monitoring/hosts/${id}/badge`, undefined, badgeResponseSchema),
+  disableBadge: (id: number) => api.delete(`/monitoring/hosts/${id}/badge`),
 };
 
 export const hostsApi = {
