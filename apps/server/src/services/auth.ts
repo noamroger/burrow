@@ -32,6 +32,8 @@ export interface NewSession {
 export interface AuthenticatedSession {
   user: Pick<UserRow, 'id' | 'email'>;
   session: SessionRow;
+  /** How the request authenticated: a browser session cookie or an API token. */
+  via?: 'session' | 'token';
   /** Set when the expiry was extended and the cookie should be re-sent. */
   renewedUntil?: Date;
 }

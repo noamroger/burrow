@@ -55,6 +55,12 @@ export function registerSession(app: FastifyInstance, ctx: AppContext): void {
   app.decorateRequest('auth', null);
   app.addHook('onRequest', async (req, reply) => {
     if (!req.url.startsWith('/api/')) return;
+    if (/^Bearer\s+burrow_/i.test(req.headers.authorization ?? '')) {
+      // API tokens never fall back to the cookie: a wrong token is a 401.
+      // Other Authorization headers (e.g. Basic auth of a reverse proxy) are ignored.
+      req.auth = ctx.apiTokens.authenticate(req.headers.authorization);
+      return;
+    }
     const value = req.cookies[SESSION_COOKIE];
     const auth = ctx.auth.getSession(value);
     req.auth = auth;
@@ -64,7 +70,8 @@ export function registerSession(app: FastifyInstance, ctx: AppContext): void {
 
 /** Throws unless the request carries the session's CSRF token. */
 export function assertCsrf(req: FastifyRequest): void {
-  if (SAFE_METHODS.has(req.method) || !req.auth) return;
+  // Browsers never attach an Authorization header on their own: no CSRF risk.
+  if (SAFE_METHODS.has(req.method) || !req.auth || req.auth.via === 'token') return;
   const header = req.headers[CSRF_HEADER];
   if (typeof header !== 'string' || !safeEqual(header, req.auth.session.csrfToken)) {
     throw new AppError(
@@ -89,6 +96,13 @@ export function requireAuth(ctx: AppContext) {
     }
     assertCsrf(req);
   };
+}
+
+/** Refuse API tokens on routes reserved to a signed-in browser (tokens, password). */
+export function requireSession(req: FastifyRequest): void {
+  if (req.auth?.via === 'token') {
+    throw new AppError('FORBIDDEN', 'Sign in to the web UI to do this; API tokens cannot.', 403);
+  }
 }
 
 /** The authenticated user id (only call behind {@link requireAuth}). */

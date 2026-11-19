@@ -523,6 +523,134 @@ export const syncResultSchema = z.object({
 export type SyncResult = z.infer<typeof syncResultSchema>;
 
 /* ------------------------------------------------------------------ */
+/* API tokens                                                          */
+/* ------------------------------------------------------------------ */
+
+/** Prefix of every Burrow API token, e.g. `burrow_3q2…`. */
+export const API_TOKEN_PREFIX = 'burrow_';
+
+export const apiTokenSchema = z.object({
+  id: z.number().int(),
+  name: z.string(),
+  /** First characters of the token, to recognise it. The token itself is shown once. */
+  hint: z.string(),
+  createdAt: z.string(),
+  lastUsedAt: z.string().nullable(),
+});
+export type ApiToken = z.infer<typeof apiTokenSchema>;
+
+/** GET /api/tokens -> 200 */
+export const apiTokenListSchema = z.object({ tokens: z.array(apiTokenSchema) });
+export type ApiTokenList = z.infer<typeof apiTokenListSchema>;
+
+/** POST /api/tokens -> 201 CreatedApiToken (session only). DELETE /api/tokens/:id -> 204. */
+export const createApiTokenSchema = z.object({ name: z.string().trim().min(1).max(64) });
+export type CreateApiTokenInput = z.infer<typeof createApiTokenSchema>;
+
+export const createdApiTokenSchema = apiTokenSchema.extend({
+  /** The full token. Shown only in this response: Burrow stores a hash. */
+  token: z.string(),
+});
+export type CreatedApiToken = z.infer<typeof createdApiTokenSchema>;
+
+/* ------------------------------------------------------------------ */
+/* Configuration export / import                                       */
+/* ------------------------------------------------------------------ */
+
+export const CONFIG_FORMAT_VERSION = 1;
+
+/** One proxy host in an exported configuration. No ids: hosts are matched by hostname + path. */
+export const configHostSchema = z.object({
+  subdomain: subdomainSchema,
+  /** Zone name, e.g. `example.com` (zone ids differ between accounts). */
+  zone: z.string().trim().toLowerCase().min(1),
+  /** Tunnel name. Missing or unknown: the default tunnel. */
+  tunnel: z.string().optional(),
+  service: serviceUrlSchema,
+  path: ingressPathSchema.optional().default(''),
+  enabled: z.boolean().optional().default(true),
+  options: z
+    .object({
+      noTLSVerify: z.boolean().optional().default(false),
+      httpHostHeader: z.string().trim().max(255).optional().default(''),
+      originServerName: z.string().trim().max(255).optional().default(''),
+      extra: z.record(z.unknown()).optional().default({}),
+    })
+    .optional()
+    .default({}),
+  access: accessSettingsInputSchema.optional().default({}),
+});
+export type ConfigHost = z.input<typeof configHostSchema>;
+
+export const configTunnelSchema = z.object({
+  name: tunnelNameSchema,
+  /** Cloudflare tunnel UUID, used to find the same tunnel in the same account. */
+  cfId: z.string().uuid().optional(),
+  origin: tunnelOriginSchema.optional().default('created'),
+  runConnector: z.boolean().optional().default(true),
+  isDefault: z.boolean().optional().default(false),
+});
+
+/**
+ * GET /api/config/export -> 200 ConfigDocument (attachment). Never contains
+ * secrets: no API token, no password, no session.
+ */
+export const configDocumentSchema = z
+  .object({
+    burrow: z.literal(CONFIG_FORMAT_VERSION),
+    exportedAt: z.string().optional(),
+    /** Burrow version that wrote the file (informative). */
+    version: z.string().optional(),
+    zones: z.array(z.string().trim().toLowerCase()).optional().default([]),
+    tunnels: z.array(configTunnelSchema).optional().default([]),
+    hosts: z.array(configHostSchema).max(2000),
+  })
+  .superRefine((doc, ctx) => {
+    const seen = new Set<string>();
+    doc.hosts.forEach((h, i) => {
+      const key = `${buildHostname(h.subdomain, h.zone)}|${h.path}`;
+      if (seen.has(key)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['hosts', i],
+          message: `Duplicate host ${buildHostname(h.subdomain, h.zone)}${h.path ? ` (path ${h.path})` : ''}`,
+        });
+      }
+      seen.add(key);
+    });
+  });
+export type ConfigDocument = z.input<typeof configDocumentSchema>;
+export type ParsedConfigDocument = z.output<typeof configDocumentSchema>;
+
+/** POST /api/config/import -> 200 ConfigImportReport */
+export const configImportSchema = z.object({
+  config: configDocumentSchema,
+  /** `merge` adds and updates; `replace` also deletes hosts missing from the file. */
+  mode: z.enum(['merge', 'replace']).optional().default('merge'),
+  /** Only report what would change. */
+  dryRun: z.boolean().optional().default(false),
+});
+export type ConfigImportInput = z.input<typeof configImportSchema>;
+
+export const configImportReportSchema = z.object({
+  dryRun: z.boolean(),
+  hosts: z.object({
+    created: z.array(z.string()),
+    updated: z.array(z.string()),
+    unchanged: z.array(z.string()),
+    removed: z.array(z.string()),
+  }),
+  zonesEnabled: z.array(z.string()),
+  tunnelsCreated: z.array(z.string()),
+  tunnelsImported: z.array(z.string()),
+  /** Things that could not be applied as written (missing zone, unknown tunnel…). */
+  warnings: z.array(z.string()),
+  /** Result of the sync that followed (null on a dry run). */
+  sync: syncResultSchema.nullable(),
+});
+export type ConfigImportReport = z.infer<typeof configImportReportSchema>;
+
+/* ------------------------------------------------------------------ */
 /* Logs (cloudflared)                                                  */
 /* ------------------------------------------------------------------ */
 

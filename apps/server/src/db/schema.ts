@@ -35,6 +35,24 @@ export const sessions = sqliteTable(
   (t) => [index('sessions_user_idx').on(t.userId)],
 );
 
+/** Personal API tokens for scripts. Only the SHA-256 of a token is stored. */
+export const apiTokens = sqliteTable(
+  'api_tokens',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    /** First characters of the token, for display. */
+    hint: text('hint').notNull(),
+    tokenHash: text('token_hash').notNull().unique(),
+    lastUsedAt: text('last_used_at'),
+    createdAt: timestamp('created_at'),
+  },
+  (t) => [index('api_tokens_user_idx').on(t.userId)],
+);
+
 /** Key/value settings. Values are JSON; secrets are encrypted before being stored. */
 export const settings = sqliteTable('settings', {
   key: text('key').primaryKey(),
@@ -129,6 +147,7 @@ export const auditLog = sqliteTable('audit_log', {
 
 export type UserRow = typeof users.$inferSelect;
 export type SessionRow = typeof sessions.$inferSelect;
+export type ApiTokenRow = typeof apiTokens.$inferSelect;
 export type ZoneRow = typeof zones.$inferSelect;
 export type TunnelRow = typeof tunnels.$inferSelect;
 export type ProxyHostRow = typeof proxyHosts.$inferSelect;

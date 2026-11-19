@@ -19,6 +19,8 @@ import {
   syncApi,
   tunnelApi,
   tunnelsApi,
+  tokensApi,
+  configApi,
   zonesApi,
 } from './endpoints';
 
@@ -35,6 +37,7 @@ export const queryKeys = {
   sync: ['sync'] as const,
   logs: ['logs'] as const,
   health: ['health'] as const,
+  tokens: ['tokens'] as const,
 };
 
 /** Polling intervals (ms). */
@@ -229,6 +232,40 @@ export function useTunnelControl() {
       void qc.invalidateQueries({ queryKey: queryKeys.tunnelInfo(id) });
       void qc.invalidateQueries({ queryKey: queryKeys.tunnels });
       void qc.invalidateQueries({ queryKey: queryKeys.tunnel });
+    },
+  });
+}
+
+/* ------------------------------ API tokens ---------------------------- */
+
+export function useApiTokens() {
+  return useQuery({ queryKey: queryKeys.tokens, queryFn: tokensApi.list, select: (d) => d.tokens });
+}
+
+export function useCreateApiToken() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: tokensApi.create,
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.tokens }),
+  });
+}
+
+export function useDeleteApiToken() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: tokensApi.remove,
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.tokens }),
+  });
+}
+
+/* ---------------------------- configuration --------------------------- */
+
+export function useImportConfig() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: configApi.import,
+    onSuccess: (report) => {
+      if (!report.dryRun) invalidateTunnels(qc);
     },
   });
 }

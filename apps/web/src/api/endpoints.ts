@@ -3,7 +3,10 @@
  * See packages/shared/src/index.ts for the route documentation.
  */
 import {
+  apiTokenListSchema,
   availableTunnelListSchema,
+  configImportReportSchema,
+  createdApiTokenSchema,
   cloudflareSettingsSchema,
   importTunnelResultSchema,
   supervisorStatusSchema,
@@ -21,6 +24,7 @@ import {
   zoneListSchema,
   zoneSchema,
   type ChangePasswordInput,
+  type ConfigImportInput,
   type CreateAdminInput,
   type CreateTunnelInput,
   type ImportTunnelInput,
@@ -100,6 +104,20 @@ export const tunnelsApi = {
   action: (id: number, action: 'start' | 'stop' | 'restart') =>
     api.post(`/tunnels/${id}/${action}`, undefined, supervisorStatusSchema),
 };
+
+export const tokensApi = {
+  list: () => api.get('/tokens', apiTokenListSchema),
+  create: (name: string) => api.post('/tokens', { name }, createdApiTokenSchema),
+  remove: (id: number) => api.delete(`/tokens/${id}`),
+};
+
+export const configApi = {
+  /** Downloaded by the browser (GET with the session cookie, no CSRF needed). */
+  exportUrl: '/api/config/export',
+  import: (input: ConfigImportInput) => api.post('/config/import', input, configImportReportSchema),
+};
+
+export const docsUrl = '/api/docs/';
 
 export const hostsApi = {
   list: () => api.get('/hosts', proxyHostListSchema),

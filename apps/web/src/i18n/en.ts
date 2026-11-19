@@ -430,6 +430,52 @@ export const en = {
   'host.tunnel': 'Tunnel',
   'host.tunnelHint': 'The tunnel that carries the traffic of this host.',
 
+  /* API tokens */
+  'apiTokens.title': 'API tokens',
+  'apiTokens.hint':
+    'For scripts and automation: send a token as "Authorization: Bearer …". A token can do everything you can, except manage tokens and change the password.',
+  'apiTokens.docs': 'API documentation',
+  'apiTokens.name': 'Token name',
+  'apiTokens.namePlaceholder': 'e.g. backup script',
+  'apiTokens.create': 'Create token',
+  'apiTokens.createdTitle': 'Token "{name}" created',
+  'apiTokens.createdBody': 'Copy it now: it will not be shown again.',
+  'apiTokens.copy': 'Copy token',
+  'apiTokens.copied': 'Token copied.',
+  'apiTokens.none': 'No API token yet.',
+  'apiTokens.created': 'created {when}',
+  'apiTokens.lastUsed': 'last used {when}',
+  'apiTokens.neverUsed': 'never used',
+  'apiTokens.revoke': 'Revoke {name}',
+  'apiTokens.revokeTitle': 'Revoke {name}?',
+  'apiTokens.revokeBody': 'Scripts using this token stop working immediately.',
+  'apiTokens.revokeConfirm': 'Revoke token',
+
+  /* Configuration export / import */
+  'config.title': 'Configuration',
+  'config.hint':
+    'Export your domains, tunnels and proxy hosts to a JSON file, or import one (for example on a new server).',
+  'config.export': 'Export',
+  'config.import': 'Import a file…',
+  'config.noSecrets':
+    'The file contains no secret: no Cloudflare token, no password. Hosts are matched by hostname and path.',
+  'config.notJson': 'This file is not valid JSON.',
+  'config.invalidFile': 'This is not a Burrow configuration file: {error}',
+  'config.previewTitle': 'Import this configuration?',
+  'config.previewHint': 'Nothing has changed yet. Check what the import will do.',
+  'config.replace': 'Replace: also delete hosts that are not in the file',
+  'config.replaceHint': 'Without it, the file only adds and updates hosts.',
+  'config.created': 'New hosts',
+  'config.updated': 'Changed hosts',
+  'config.removed': 'Deleted hosts',
+  'config.zonesEnabled': 'Domains enabled',
+  'config.tunnelsAdded': 'Tunnels added',
+  'config.unchanged': '{count} host(s) unchanged.',
+  'config.warnings': 'Not applied as written',
+  'config.apply': 'Import',
+  'config.imported': 'Configuration imported.',
+  'config.importedWithErrors': 'Configuration imported, but some hosts could not be published.',
+
   'settings.session': 'Session',
   'settings.signedInAs': 'Signed in as',
 } as const;

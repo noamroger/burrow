@@ -7,9 +7,11 @@ import { openDatabase, type Db } from './db/client.js';
 import { SettingsRepository } from './db/settings.js';
 import { errorMessage } from './lib/errors.js';
 import { SecretBox } from './lib/secretbox.js';
+import { ApiTokenService } from './services/api-tokens.js';
 import { AuditService } from './services/audit.js';
 import { AuthService } from './services/auth.js';
 import { CloudflareService } from './services/cloudflare.js';
+import { ConfigService } from './services/config-io.js';
 import { HealthService } from './services/health.js';
 import { HostService } from './services/hosts.js';
 import { LogBuffer } from './services/log-buffer.js';
@@ -30,6 +32,7 @@ export interface AppContext {
   sqlite: Database.Database;
   settings: SettingsRepository;
   auth: AuthService;
+  apiTokens: ApiTokenService;
   audit: AuditService;
   cloudflare: CloudflareService;
   tunnels: TunnelService;
@@ -39,6 +42,8 @@ export interface AppContext {
   health: HealthService;
   hosts: HostService;
   zones: ZoneService;
+  /** Configuration export / import . */
+  configIo: ConfigService;
   lifecycle: Lifecycle;
 }
 
@@ -109,16 +114,26 @@ export function createContext(
   const health = new HealthService(overrides.healthTimeoutMs ?? 5_000);
   const hosts = new HostService({ db, reconciler, cloudflare, health, audit, tunnels, logger });
   const zones = new ZoneService(db, cloudflare);
+  const version = readVersion();
+  const configIo = new ConfigService({
+    db,
+    cloudflare,
+    tunnels,
+    reconciler,
+    logger: logger.child({ component: 'config' }),
+    version,
+  });
 
   const ctx = {
     config,
     logger,
-    version: readVersion(),
+    version,
     startedAt: Date.now(),
     db,
     sqlite,
     settings,
     auth,
+    apiTokens: new ApiTokenService(db),
     audit,
     cloudflare,
     tunnels,
@@ -128,6 +143,7 @@ export function createContext(
     health,
     hosts,
     zones,
+    configIo,
   } as Omit<AppContext, 'lifecycle'> as AppContext;
   ctx.lifecycle = new Lifecycle(ctx);
   return ctx;

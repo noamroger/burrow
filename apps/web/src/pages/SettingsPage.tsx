@@ -1,4 +1,4 @@
-/** Settings: Cloudflare token, zones, password, session. */
+/** Settings: Cloudflare token, zones, configuration, API tokens, password, session. */
 import { useId, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { changePasswordSchema } from '@burrow/shared';
@@ -31,6 +31,8 @@ import { t } from '../i18n';
 import { errorMessage } from '../lib/errors';
 import { fieldErrors } from '../lib/zod';
 import { PasswordStrength } from '../components/PasswordStrength';
+import { ApiTokensCard } from '../components/settings/ApiTokensCard';
+import { ConfigCard } from '../components/settings/ConfigCard';
 
 export function SettingsPage() {
   return (
@@ -44,6 +46,8 @@ export function SettingsPage() {
             <ZoneList />
           </CardBody>
         </Card>
+        <ConfigCard />
+        <ApiTokensCard />
         <div className="grid gap-6 lg:grid-cols-2">
           <PasswordCard />
           <SessionCard />

@@ -3,18 +3,23 @@ import cookie from '@fastify/cookie';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import fastifyStatic from '@fastify/static';
+import swagger from '@fastify/swagger';
+import swaggerUi from '@fastify/swagger-ui';
 import Fastify, { LogController, type FastifyBaseLogger, type FastifyInstance } from 'fastify';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AppContext } from './context.js';
 import { registerErrorHandler } from './http/errors.js';
+import { buildOpenApi } from './http/openapi.js';
 import { registerSession, requireAuth } from './http/session.js';
 import { AppError } from './lib/errors.js';
 import { authRoutes } from './routes/auth.js';
 import { cloudflareRoutes } from './routes/cloudflare.js';
+import { configRoutes } from './routes/config.js';
 import { healthRoutes } from './routes/health.js';
 import { hostRoutes } from './routes/hosts.js';
 import { logRoutes } from './routes/logs.js';
+import { tokenRoutes } from './routes/tokens.js';
 import { tunnelRoutes } from './routes/tunnel.js';
 
 /** Fastify takes a hop count as a function; booleans and address lists as-is. */
@@ -105,6 +110,28 @@ export async function buildApp(
 
   registerSession(app, ctx);
 
+  // API documentation (public: it describes the open source API, no data).
+  await app.register(swagger, {
+    mode: 'static',
+    specification: { document: buildOpenApi(ctx.version) as never },
+  });
+  await app.register(swaggerUi, {
+    routePrefix: '/api/docs',
+    staticCSP: true,
+    // Burrow is often opened over plain HTTP on the LAN: never upgrade to HTTPS,
+    // and never call the public validator.
+    transformStaticCSP: (header) =>
+      header.replace(/\s*upgrade-insecure-requests;?/, '').replace(' validator.swagger.io', ''),
+    theme: { title: 'Burrow API' },
+    uiConfig: {
+      docExpansion: 'list',
+      deepLinking: true,
+      tryItOutEnabled: false,
+      validatorUrl: null,
+    },
+  });
+  app.get('/api/openapi.json', { config: { rateLimit: false } }, async () => app.swagger());
+
   // Public routes.
   await app.register(async (scope) => {
     await healthRoutes(scope, ctx);
@@ -118,6 +145,8 @@ export async function buildApp(
     await hostRoutes(scope, ctx);
     await tunnelRoutes(scope, ctx);
     await logRoutes(scope, ctx);
+    await configRoutes(scope, ctx);
+    await tokenRoutes(scope, ctx);
   });
 
   const webRoot = ctx.config.webDistDir;
