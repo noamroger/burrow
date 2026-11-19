@@ -15,10 +15,11 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variants: Record<ButtonVariant, string> = {
-  primary: 'bg-accent text-accent-fg hover:bg-accent-hover shadow-sm',
-  secondary: 'bg-surface text-fg border border-border hover:bg-surface-2 shadow-sm',
+  primary:
+    'bg-accent text-accent-fg hover:bg-accent-hover shadow-[inset_0_1px_0_rgb(255_255_255/0.18),0_1px_2px_rgb(42_31_24/0.18)]',
+  secondary: 'bg-surface text-fg border border-border hover:bg-surface-2 hover:border-soil-3',
   ghost: 'text-fg-muted hover:text-fg hover:bg-surface-2',
-  danger: 'bg-danger text-white hover:opacity-90 shadow-sm dark:text-bg',
+  danger: 'bg-danger text-white hover:opacity-90 dark:text-bg',
 };
 
 const sizes: Record<ButtonSize, string> = {
@@ -48,7 +49,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       aria-busy={loading || undefined}
       className={cn(
         'inline-flex shrink-0 items-center justify-center rounded-lg font-medium whitespace-nowrap transition-colors',
-        'disabled:cursor-not-allowed disabled:opacity-60',
+        'enabled:active:translate-y-px disabled:cursor-not-allowed disabled:opacity-60',
         variants[variant],
         sizes[size],
         className,

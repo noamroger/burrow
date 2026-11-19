@@ -115,31 +115,42 @@ export function HostsPage() {
       <DriftAlert />
       <TwoFactorHint />
 
-      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label={t('hosts.stats.tunnel')}>
-          {tunnel.data?.tunnel ? (
-            <TunnelStatusBadge status={tunnel.data.tunnel.status} />
-          ) : (
-            <span className="text-fg-muted">—</span>
-          )}
-        </Stat>
-        <Stat label={t('hosts.stats.hosts')}>
-          <span className="text-2xl font-semibold tabular-nums">{list.length}</span>
-        </Stat>
-        <Stat label={t('hosts.stats.attention')}>
-          <span
-            className={cn('text-2xl font-semibold tabular-nums', attention > 0 && 'text-danger')}
-          >
-            {attention}
-          </span>
-        </Stat>
-        <Stat label={t('hosts.stats.origins')}>
-          <span className="text-2xl font-semibold tabular-nums">
-            {up}
-            <span className="text-base font-normal text-fg-muted"> / {list.length}</span>
-          </span>
-        </Stat>
-      </div>
+      {list.length > 0 ? (
+        <Card className="mb-6">
+          <dl className="flex flex-col divide-y divide-border text-sm sm:flex-row sm:flex-wrap sm:divide-x sm:divide-y-0">
+            <SummaryItem label={t('hosts.stats.tunnel')}>
+              {tunnel.data?.tunnel ? (
+                <TunnelStatusBadge status={tunnel.data.tunnel.status} />
+              ) : (
+                <span className="text-fg-muted">{t('tunnel.status.unknown')}</span>
+              )}
+            </SummaryItem>
+            <SummaryItem label={t('hosts.stats.hosts')}>
+              <span className="tabular-nums">
+                {tPlural('hosts.summary.hostsOne', 'hosts.summary.hosts', list.length)}
+              </span>
+            </SummaryItem>
+            <SummaryItem label={t('hosts.stats.cloudflare')}>
+              {attention > 0 ? (
+                <span className="inline-flex items-center gap-1.5 font-medium text-danger">
+                  <Icon name="alert" size={15} />
+                  {tPlural('hosts.summary.attentionOne', 'hosts.summary.attention', attention)}
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 text-success">
+                  <Icon name="check" size={15} />
+                  {t('hosts.summary.inSync')}
+                </span>
+              )}
+            </SummaryItem>
+            <SummaryItem label={t('hosts.stats.origins')}>
+              <span className="tabular-nums">
+                {t('hosts.summary.origins', { up, total: list.length })}
+              </span>
+            </SummaryItem>
+          </dl>
+        </Card>
+      ) : null}
 
       <div className="space-y-4">
         {syncResult ? (
@@ -239,11 +250,11 @@ export function HostsPage() {
   );
 }
 
-function Stat({ label, children }: { label: string; children: React.ReactNode }) {
+function SummaryItem({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-border bg-surface px-4 py-3 shadow-sm">
-      <p className="text-xs font-medium text-fg-muted">{label}</p>
-      <div className="mt-1 flex h-8 items-center">{children}</div>
+    <div className="flex items-center justify-between gap-3 px-4 py-3 sm:flex-1 sm:flex-col sm:items-start sm:gap-1 sm:px-5 sm:py-4">
+      <dt className="text-xs text-fg-muted">{label}</dt>
+      <dd className="flex min-h-6 items-center text-fg">{children}</dd>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 /** Settings: Cloudflare token, zones, configuration, two-step verification, API tokens, password, session. */
-import { useEffect, useId, useState, type FormEvent } from 'react';
+import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { changePasswordSchema } from '@burrow/shared';
 import { isApiError } from '../api/client';
@@ -21,13 +21,13 @@ import { ZoneList } from '../components/ZoneList';
 import { Alert } from '../components/ui/Alert';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
-import { Card, CardBody, CardHeader } from '../components/ui/Card';
+import { Card, CardBody, CardHeader, CardHeadingLevel } from '../components/ui/Card';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { Dialog } from '../components/ui/Dialog';
 import { describedBy, Field, Input } from '../components/ui/Field';
 import { PageSpinner } from '../components/ui/Spinner';
 import { useToast } from '../components/ui/Toast';
-import { t } from '../i18n';
+import { t, type MessageKey } from '../i18n';
 import { errorMessage } from '../lib/errors';
 import { fieldErrors } from '../lib/zod';
 import { PasswordStrength } from '../components/PasswordStrength';
@@ -41,6 +41,16 @@ import { MaintenanceCard } from '../components/settings/MaintenanceCard';
 import { NotificationsCard } from '../components/settings/NotificationsCard';
 import { SecurityCard } from '../components/settings/SecurityCard';
 
+const GROUPS = [
+  { id: 'cloudflare', label: 'settings.group.cloudflare', hint: 'settings.group.cloudflareHint' },
+  { id: 'publishing', label: 'settings.group.publishing', hint: 'settings.group.publishingHint' },
+  { id: 'alerts', label: 'settings.group.alerts', hint: 'settings.group.alertsHint' },
+  { id: 'data', label: 'settings.group.data', hint: 'settings.group.dataHint' },
+  { id: 'account', label: 'settings.group.account', hint: 'settings.group.accountHint' },
+] as const satisfies ReadonlyArray<{ id: string; label: MessageKey; hint: MessageKey }>;
+
+type GroupId = (typeof GROUPS)[number]['id'];
+
 export function SettingsPage() {
   const { hash } = useLocation();
   // Links such as /settings#security jump to their card.
@@ -50,31 +60,74 @@ export function SettingsPage() {
   return (
     <>
       <PageHeader title={t('settings.title')} description={t('settings.description')} />
-      <div className="space-y-6">
-        <CloudflareCard />
-        <Card>
-          <CardHeader title={t('settings.zones')} description={t('settings.zonesHint')} />
-          <CardBody>
-            <ZoneList />
-          </CardBody>
-        </Card>
-        <DockerCard />
-        <MaintenanceCard />
-        <NotificationsCard />
-        <HomepageCard />
-        <DriftCard />
-        <ConfigCard />
-        <BackupsCard />
-        <div id="security" className="scroll-mt-6">
-          <SecurityCard />
-        </div>
-        <ApiTokensCard />
-        <div className="grid gap-6 lg:grid-cols-2">
-          <PasswordCard />
-          <SessionCard />
+      <div className="lg:grid lg:grid-cols-[11rem_minmax(0,1fr)] lg:gap-10">
+        <nav aria-label={t('settings.sections')} className="hidden lg:block">
+          <ul className="sticky top-8 space-y-0.5 border-l border-border">
+            {GROUPS.map((group) => (
+              <li key={group.id}>
+                <a
+                  href={`#${group.id}`}
+                  className="-ml-px block border-l-2 border-transparent py-1.5 pl-4 text-sm text-fg-muted hover:border-accent hover:text-fg"
+                >
+                  {t(group.label)}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+        <div className="space-y-12">
+          <SettingsGroup id="cloudflare">
+            <CloudflareCard />
+            <Card>
+              <CardHeader title={t('settings.zones')} description={t('settings.zonesHint')} />
+              <CardBody>
+                <ZoneList />
+              </CardBody>
+            </Card>
+            <DriftCard />
+          </SettingsGroup>
+          <SettingsGroup id="publishing">
+            <DockerCard />
+            <MaintenanceCard />
+            <HomepageCard />
+          </SettingsGroup>
+          <SettingsGroup id="alerts">
+            <NotificationsCard />
+          </SettingsGroup>
+          <SettingsGroup id="data">
+            <ConfigCard />
+            <BackupsCard />
+          </SettingsGroup>
+          <SettingsGroup id="account">
+            <div id="security" className="scroll-mt-6">
+              <SecurityCard />
+            </div>
+            <ApiTokensCard />
+            <div className="grid gap-6 lg:grid-cols-2">
+              <PasswordCard />
+              <SessionCard />
+            </div>
+          </SettingsGroup>
         </div>
       </div>
     </>
+  );
+}
+
+function SettingsGroup({ id, children }: { id: GroupId; children: ReactNode }) {
+  const group = GROUPS.find((g) => g.id === id)!;
+  return (
+    <section aria-labelledby={`${id}-title`} id={id} className="scroll-mt-6">
+      <div className="mb-4">
+        <h2 id={`${id}-title`} className="text-xl font-semibold text-fg">
+          {t(group.label)}
+        </h2>
+        <p className="mt-0.5 text-sm text-fg-muted">{t(group.hint)}</p>
+      </div>
+      <CardHeadingLevel.Provider value={3}>
+        <div className="space-y-6">{children}</div>
+      </CardHeadingLevel.Provider>
+    </section>
   );
 }
 

@@ -89,7 +89,7 @@ function HomeView({ data }: { data: HomeData }) {
         <div className="flex min-w-0 flex-1 items-center gap-3.5">
           <LogoMark size={40} className="shrink-0" />
           <div className="min-w-0">
-            <h1 className="truncate text-2xl font-semibold tracking-tight">{data.title}</h1>
+            <h1 className="truncate text-3xl font-semibold">{data.title}</h1>
             {data.subtitle ? (
               <p className="truncate text-sm text-fg-muted">{data.subtitle}</p>
             ) : null}
@@ -139,16 +139,11 @@ function HomeView({ data }: { data: HomeData }) {
           groups.map((group) => (
             <section key={group.name} aria-labelledby={`group-${group.name}`}>
               <div className="mb-3 flex items-center gap-3">
-                <h2
-                  id={`group-${group.name}`}
-                  className="text-xs font-semibold tracking-[0.12em] text-fg-muted uppercase"
-                >
+                <h2 id={`group-${group.name}`} className="text-base font-semibold text-fg">
                   {group.name}
                 </h2>
                 <span className="h-px flex-1 bg-border" aria-hidden />
-                <span className="font-mono text-xs text-fg-muted tabular-nums">
-                  {group.services.length}
-                </span>
+                <span className="text-xs text-fg-muted tabular-nums">{group.services.length}</span>
               </div>
               <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {group.services.map((s) => (
@@ -185,7 +180,7 @@ function Tile({ service }: { service: HomeService }) {
     <a
       href={service.url}
       rel="noreferrer"
-      className="group relative flex h-full items-center gap-3.5 rounded-xl border border-border bg-surface p-3.5 transition-[border-color,box-shadow,transform] hover:-translate-y-px hover:border-accent/60 hover:shadow-[0_6px_18px_-10px_rgb(42_31_24/0.35)] focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+      className="group relative flex h-full items-center gap-3.5 rounded-xl border border-border bg-surface p-3.5 transition-colors hover:border-accent/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
     >
       <ServiceIcon service={service} />
       <span className="min-w-0 flex-1">
@@ -230,7 +225,7 @@ function ServiceIcon({ service }: { service: HomeService }) {
   }
   return (
     <span
-      className="grid size-11 shrink-0 place-items-center rounded-xl bg-accent-soft font-mono text-sm font-semibold text-accent"
+      className="grid size-11 shrink-0 place-items-center rounded-xl bg-accent-soft font-display text-base font-semibold text-accent"
       aria-hidden
     >
       {service.monogram}
