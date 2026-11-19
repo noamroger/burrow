@@ -106,8 +106,8 @@ jobs:
           curl -fsS http://127.0.0.1:8080/api/health
           test "$(stat -c '%u:%g' data)" = "1000:1000"
           # Node must run unprivileged (tini, PID 1, is the only root process).
-          docker top burrow -o uid,args
-          test "$(docker top burrow -o uid,args | awk '$2 == "node" { print $1 }')" = "1000"
+          docker top burrow -o pid,uid,args
+          test "$(docker top burrow -o pid,uid,args | awk '$3 == "node" { print $2 }')" = "1000"
           docker exec burrow cloudflared --version
 
       - name: Container logs
