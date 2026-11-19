@@ -50,6 +50,7 @@ describe('Cloudflare Access', () => {
       emails: ['me@example.com'],
       emailDomains: ['family.example'],
       sessionDuration: '24h',
+      browserRendering: null,
     });
 
     expect(policies()).toHaveLength(1);

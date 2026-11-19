@@ -13,10 +13,13 @@ import { AuthService } from './services/auth.js';
 import { CloudflareService } from './services/cloudflare.js';
 import { ConfigService } from './services/config-io.js';
 import { BackupService } from './backup/service.js';
+import { DockerClient, type DockerApi } from './docker/client.js';
+import { defaultSelfHostname, DockerDiscoveryService } from './docker/discovery.js';
 import { DriftService } from './services/drift.js';
 import { HealthService } from './services/health.js';
 import { HostService } from './services/hosts.js';
 import { LogBuffer } from './services/log-buffer.js';
+import { MaintenanceService } from './services/maintenance.js';
 import { Reconciler } from './services/reconciler.js';
 import type { SupervisorOptions } from './services/supervisor.js';
 import { SupervisorPool } from './services/supervisors.js';
@@ -48,6 +51,8 @@ export interface AppContext {
   configIo: ConfigService;
   drift: DriftService;
   backups: BackupService;
+  docker: DockerDiscoveryService;
+  maintenance: MaintenanceService;
   lifecycle: Lifecycle;
 }
 
@@ -57,6 +62,9 @@ export interface ContextOverrides {
   cloudflareRetryBaseMs?: number;
   supervisor?: Partial<Pick<SupervisorOptions, 'env' | 'backoff' | 'killTimeoutMs'>>;
   healthTimeoutMs?: number;
+  /** Fake Docker API for discovery tests. */
+  docker?: DockerApi;
+  dockerSelfHostname?: string;
 }
 
 /** Version from package.json (works from both `src/` and `dist/`). */
@@ -114,6 +122,7 @@ export function createContext(
     cloudflare,
     tunnels,
     logger: logger.child({ component: 'reconciler' }),
+    maintenanceOrigin: config.maintenanceOrigin,
   });
   const health = new HealthService(overrides.healthTimeoutMs ?? 5_000);
   const hosts = new HostService({ db, reconciler, cloudflare, health, audit, tunnels, logger });
@@ -163,6 +172,30 @@ export function createContext(
       logger: logger.child({ component: 'backup' }),
       fetch: overrides.fetch,
     }),
+    docker: new DockerDiscoveryService({
+      db,
+      settings,
+      hosts,
+      tunnels,
+      client: overrides.docker ?? new DockerClient(config.dockerHost),
+      endpoint: config.dockerHost,
+      intervalSeconds: config.dockerScanIntervalSeconds,
+      logger: logger.child({ component: 'docker' }),
+      selfHostname: overrides.dockerSelfHostname ?? defaultSelfHostname(),
+      isCloudflareConfigured: () => cloudflare.isConfigured(),
+    }),
+    maintenance: new MaintenanceService({
+      db,
+      settings,
+      hosts,
+      reconciler,
+      cloudflare,
+      audit,
+      logger: logger.child({ component: 'maintenance' }),
+      port: config.maintenancePort,
+      listen: config.maintenanceListen,
+      origin: config.maintenanceOrigin,
+    }),
   } as Omit<AppContext, 'lifecycle'> as AppContext;
   ctx.lifecycle = new Lifecycle(ctx);
   return ctx;
@@ -191,6 +224,7 @@ export class Lifecycle {
   /** Called once after the HTTP server listens. Never throws. */
   async start(): Promise<void> {
     const { ctx } = this;
+    await ctx.maintenance.start();
     const version = await ctx.supervisors.detectVersion();
     if (version) ctx.logger.info({ version }, 'cloudflared found');
     else
@@ -208,6 +242,12 @@ export class Lifecycle {
     if (ctx.config.reconcileIntervalSeconds > 0) {
       this.every(ctx.config.reconcileIntervalSeconds, () => this.checkDrift());
     }
+    // Temporary hosts: remove the expired ones every 30 seconds.
+    this.every(30, () => ctx.hosts.removeExpired());
+    void ctx.hosts.removeExpired().catch(() => undefined);
+    // Docker discovery (does nothing while turned off).
+    this.every(ctx.config.dockerScanIntervalSeconds, () => ctx.docker.scan());
+    void ctx.docker.scan();
     // Backups: check every 5 minutes whether one is due (the schedule is in hours).
     this.every(300, () => ctx.backups.runIfDue());
     if (ctx.config.healthcheckIntervalSeconds > 0) {
@@ -221,6 +261,7 @@ export class Lifecycle {
     for (const t of this.timers) clearInterval(t);
     this.timers = [];
     await this.ctx.supervisors.stopAll();
+    await this.ctx.maintenance.stop();
   }
 
   /** Startup with a token: ensure the default tunnel, start the connectors, reconcile. */

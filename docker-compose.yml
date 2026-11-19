@@ -22,6 +22,10 @@ services:
     volumes:
       # SQLite database, encryption key and state. Back this directory up.
       - ./data:/data
+      # Optional: Docker discovery (Settings › Docker discovery). Containers
+      # with a `burrow.host` label are published automatically. Read-only.
+      # A docker-socket-proxy (DOCKER_HOST below) is the safer alternative.
+      # - /var/run/docker.sock:/var/run/docker.sock:ro
 
     environment:
       TZ: Europe/Paris
@@ -40,6 +44,14 @@ services:
       # Behind a reverse proxy (or when Burrow itself is published through
       # the tunnel), trust X-Forwarded-* headers from one hop:
       # TRUST_PROXY: "1"
+      # Maintenance mode: cloudflared inside this container reaches the
+      # maintenance page server on 127.0.0.1:8081. Only if a tunnel's
+      # connector runs on another machine, make it reachable from there:
+      # MAINTENANCE_LISTEN: 0.0.0.0
+      # MAINTENANCE_ORIGIN: http://192.168.1.10:8081
+      # Docker discovery through a socket proxy (e.g. tecnativa/docker-socket-proxy
+      # with CONTAINERS=1) instead of mounting the socket:
+      # DOCKER_HOST: tcp://socket-proxy:2375
 
     # Hardening: Burrow only writes to /data and /tmp.
     read_only: true

@@ -65,6 +65,19 @@ When you remove the service, Burrow removes the route and the DNS record.
   it or keep it (or repairs it automatically, if you prefer).
 - **Backups**: scheduled copies of the database to a folder or to
   S3-compatible storage such as Cloudflare R2, with retention.
+- **Templates**: Jellyfin, Plex, Home Assistant, Nextcloud, Proxmox,
+  Vaultwarden, Portainer and more in one click, with the right origin
+  options and the settings to change in the app itself.
+- **Docker auto-discovery** (optional): add a `burrow.host=app.example.com`
+  label to a container and it publishes itself, then disappears with the
+  container.
+- **Temporary hosts**: share a demo for 2 hours, Burrow removes the host,
+  its DNS record and its Access app afterwards.
+- **Maintenance mode**: one click serves a maintenance page (HTTP 503)
+  instead of the service. The page is fully customizable: colours, logo,
+  message, or your own HTML, with a live preview.
+- **SSH, RDP and TCP**: publish non-HTTP services; SSH and VNC can even open
+  in the browser behind Cloudflare Access.
 - **Export, import and REST API**: move your configuration to another server
   as one JSON file, and script everything with API tokens and the built-in
   OpenAPI documentation at `/api/docs` (see [docs/api.md](docs/api.md)).
@@ -206,22 +219,137 @@ the application cannot be created, the host is not published.
   Until then, visitors may see "Unable to find your Access application":
   wait a moment and reload.
 
+## Templates
+
+In the host form, **Start from a template** fills in the service URL, a
+suggested subdomain and the origin options an app needs behind a tunnel
+(for example `noTLSVerify` for Proxmox, Portainer or Synology, which use a
+self-signed certificate). It also lists what to change in the app itself,
+such as Home Assistant's `trusted_proxies` or Nextcloud's `trusted_domains`.
+WebSockets work through the tunnel without any option.
+
+Templates are listed at `GET /api/templates`; their ids are also used by the
+`burrow.template` Docker label.
+
+## Docker auto-discovery
+
+Off by default. Burrow can watch your containers and publish the ones that
+carry a `burrow.host` label:
+
+```yaml
+services:
+  jellyfin:
+    image: jellyfin/jellyfin
+    networks: [proxy] # a network Burrow is also on
+    labels:
+      burrow.host: jellyfin.example.com
+      burrow.template: jellyfin # port 8096 and the right options
+```
+
+1. Give Burrow read-only access to Docker, either by mounting the socket
+   (`/var/run/docker.sock:/var/run/docker.sock:ro`; Burrow joins the socket's
+   group automatically) or, safer, through a
+   [docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy)
+   with `CONTAINERS=1` and `DOCKER_HOST=tcp://socket-proxy:2375`.
+2. Turn on **Settings › Docker discovery**. Burrow scans every 30 seconds
+   and shows each labelled container with its status.
+
+| Label                       | Meaning                                                                                |
+| --------------------------- | -------------------------------------------------------------------------------------- |
+| `burrow.host`               | Public hostname (required). Its domain must be enabled in Settings › Zones.            |
+| `burrow.port`               | Port inside the container. Default: the template's port, the only exposed port, or 80. |
+| `burrow.scheme`             | `http` (default), `https`, `ssh`, `rdp` or `tcp`                                       |
+| `burrow.template`           | A template id (`jellyfin`, `proxmox`, `home-assistant`…): port, scheme and options     |
+| `burrow.service`            | Full origin URL, overrides scheme, address and port                                    |
+| `burrow.address`            | How Burrow reaches the container. Default: its name on a shared network, or its IP.    |
+| `burrow.path`               | Path regex, e.g. `^/api`                                                               |
+| `burrow.tunnel`             | Tunnel name (default tunnel otherwise)                                                 |
+| `burrow.no-tls-verify`      | `true` for a self-signed certificate                                                   |
+| `burrow.http-host-header`   | Host header sent to the service                                                        |
+| `burrow.origin-server-name` | TLS server name expected from the service                                              |
+| `burrow.access`             | Emails and email domains, comma separated: turns on Cloudflare Access                  |
+| `burrow.access.session`     | Access session length: `30m`, `6h`, `12h`, `24h`, `168h` or `720h`                     |
+| `burrow.access.browser`     | `ssh` or `vnc`: open the terminal or desktop in the browser (needs `burrow.access`)    |
+| `burrow.enable`             | `false` to ignore the container                                                        |
+
+Changing a label updates the host at the next scan; removing the container
+(or the label) unpublishes it. A stopped container keeps its host. Hosts
+from labels are marked **Docker** in the list and can only be changed
+through the labels; Burrow never takes over a hostname you published by
+hand. If Docker cannot be reached, nothing is removed.
+
+## Temporary hosts
+
+In the host form, **Remove automatically** publishes a host for 1 hour,
+2 hours, 6 hours, a day or a week: handy to show a demo to someone. The
+hosts list shows when it goes away. When the time is up, Burrow deletes the
+host like a manual delete (tunnel route, DNS record, Access application).
+Editing the host lets you extend the time or keep it for good. Temporary
+hosts are not included in configuration exports.
+
+## Maintenance mode
+
+The **Maintenance** button (cup icon) on a host serves a maintenance page
+instead of the service, with HTTP status 503 and a `Retry-After` header so
+search engines do not drop your page. Turn it off and the route goes back to
+the service. Cloudflare Access stays in place the whole time.
+
+The page is yours to design in **Settings › Maintenance page**: title,
+message, colours and logo (URL or upload), or switch to **Custom HTML** and
+paste a complete page. `{{hostname}}` and `{{until}}` (the expected end you
+can set when turning maintenance on) are replaced in both modes, and a live
+preview shows the result. Any host can also have its own page.
+
+How it works: the host's tunnel route is pointed at a small server inside
+the Burrow container (`127.0.0.1:8081`), separate from the admin UI, that
+only serves these pages. If a tunnel's connector runs on another machine,
+set `MAINTENANCE_LISTEN=0.0.0.0`, publish port 8081 and set
+`MAINTENANCE_ORIGIN` to an address that machine can reach.
+
+## SSH, RDP and other TCP services
+
+Use `ssh://`, `rdp://`, `tcp://` or `smb://` service URLs (or the SSH, VNC
+and RDP templates). Browsers cannot open these directly, so the host form
+shows the command people run on their computer with
+[cloudflared](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/downloads/)
+installed, for example:
+
+```sh
+ssh -o ProxyCommand="cloudflared access ssh --hostname %h" user@ssh.example.com
+cloudflared access rdp --hostname rdp.example.com --url rdp://localhost:3389
+```
+
+**In the browser:** protect an SSH or VNC host with Cloudflare Access and
+choose **Open in the browser › SSH terminal** (or **VNC desktop**, with a
+`tcp://` service). After signing in, visitors get a terminal or a desktop at
+`https://<hostname>`, no client needed. For SSH, the part of the email before
+the `@` must be a user on the server.
+
+Cloudflare can also render RDP in the browser, but that needs a private
+network route and an Access "target" rather than a public route, which
+Burrow does not set up yet: RDP hosts use `cloudflared access rdp`.
+
 ## Configuration
 
 Everything is configured from the UI. These environment variables are all
 optional:
 
-| Variable                     | Default         | Description                                                                                                                                                               |
-| ---------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PORT`                       | `8080`          | Port of the web UI                                                                                                                                                        |
-| `BURROW_SECRET`              | _(generated)_   | Key used to encrypt the API token (32+ characters). If not set, a random key is created in `/data/.secret`. Set it if you want to back up `/data` without the key inside. |
-| `TZ`                         | `UTC`           | Time zone used in logs                                                                                                                                                    |
-| `LOG_LEVEL`                  | `info`          | `debug`, `info`, `warn` or `error`                                                                                                                                        |
-| `TRUST_PROXY`                | `false`         | Set to `true` if you put the UI behind another reverse proxy                                                                                                              |
-| `BURROW_SECURE_COOKIES`      | `auto`          | `true` forces `Secure` cookies (UI served over HTTPS)                                                                                                                     |
-| `BACKUP_DIR`                 | `/data/backups` | Where scheduled backups go when the destination is "Folder on the server"                                                                                                 |
-| `RECONCILE_INTERVAL_SECONDS` | `300`           | How often Burrow checks for changes made in the Cloudflare dashboard (`0`: only at startup and on demand)                                                                 |
-| `PUID` / `PGID`              | `1000`          | User and group ids Burrow runs as. On start, Burrow makes `/data` belong to them (you never need to `chown` it).                                                          |
+| Variable                       | Default                       | Description                                                                                                                                                               |
+| ------------------------------ | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PORT`                         | `8080`                        | Port of the web UI                                                                                                                                                        |
+| `BURROW_SECRET`                | _(generated)_                 | Key used to encrypt the API token (32+ characters). If not set, a random key is created in `/data/.secret`. Set it if you want to back up `/data` without the key inside. |
+| `TZ`                           | `UTC`                         | Time zone used in logs                                                                                                                                                    |
+| `LOG_LEVEL`                    | `info`                        | `debug`, `info`, `warn` or `error`                                                                                                                                        |
+| `TRUST_PROXY`                  | `false`                       | Set to `true` if you put the UI behind another reverse proxy                                                                                                              |
+| `BURROW_SECURE_COOKIES`        | `auto`                        | `true` forces `Secure` cookies (UI served over HTTPS)                                                                                                                     |
+| `BACKUP_DIR`                   | `/data/backups`               | Where scheduled backups go when the destination is "Folder on the server"                                                                                                 |
+| `RECONCILE_INTERVAL_SECONDS`   | `300`                         | How often Burrow checks for changes made in the Cloudflare dashboard (`0`: only at startup and on demand)                                                                 |
+| `DOCKER_HOST`                  | `unix:///var/run/docker.sock` | Docker API used by auto-discovery (a socket path or `tcp://host:2375`)                                                                                                    |
+| `DOCKER_SCAN_INTERVAL_SECONDS` | `30`                          | How often Docker discovery scans the containers                                                                                                                           |
+| `MAINTENANCE_PORT`             | `8081`                        | Port of the maintenance page server (`0` turns it off)                                                                                                                    |
+| `MAINTENANCE_LISTEN`           | `127.0.0.1`                   | Address it listens on. Use `0.0.0.0` only if a tunnel connector runs on another machine.                                                                                  |
+| `MAINTENANCE_ORIGIN`           | `http://127.0.0.1:8081`       | URL cloudflared uses to reach it                                                                                                                                          |
+| `PUID` / `PGID`                | `1000`                        | User and group ids Burrow runs as. On start, Burrow makes `/data` belong to them (you never need to `chown` it).                                                          |
 
 All data lives in `/data` (SQLite database and secret key). Back up this
 folder, or turn on scheduled backups in **Settings › Backups**: Burrow then
@@ -385,10 +513,17 @@ email domains, session length).
 import, REST API with OpenAPI docs and API tokens, drift alerts, scheduled
 backups (folder or S3/R2).
 
+**v0.4**: service templates, Docker auto-discovery with labels, temporary
+hosts, maintenance mode with a customizable page, SSH/RDP/TCP hosts with
+browser-rendered SSH and VNC.
+
 **Next:**
 
-- [ ] Docker auto-discovery with labels (`burrow.host=app.example.com`,
+- [x] Docker auto-discovery with labels (`burrow.host=app.example.com`,
       `burrow.port=3000`), read-only socket, optional
+- [x] Templates, temporary hosts, maintenance mode
+- [x] SSH, RDP and TCP hosts, browser-rendered SSH and VNC
+- [ ] Browser-rendered RDP (private network route and Access target)
 - [x] Cloudflare Access applications and policies ("only my email can open this")
 - [ ] More Access rules (identity provider groups, countries, service tokens)
 - [x] Several tunnels, import an existing tunnel

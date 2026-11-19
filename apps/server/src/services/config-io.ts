@@ -1,5 +1,6 @@
 import {
   accessSessionDurationSchema,
+  findTemplate,
   buildHostname,
   CONFIG_FORMAT_VERSION,
   type ConfigDocument,
@@ -43,6 +44,8 @@ type HostValues = Pick<
   | 'accessEmails'
   | 'accessEmailDomains'
   | 'accessSessionDuration'
+  | 'accessBrowserRendering'
+  | 'template'
 >;
 
 /** JSON with sorted object keys, to compare values regardless of key order. */
@@ -98,7 +101,10 @@ export class ConfigService {
         runConnector: t.runConnector,
         isDefault: t.isDefault,
       })),
+      // Hosts from Docker labels are recreated by the labels, not by a file.
       hosts: hosts
+        // Temporary hosts are short-lived demos: not part of the configuration.
+        .filter((h) => h.source !== 'docker' && h.expiresAt === null)
         .sort((a, b) => a.hostname.localeCompare(b.hostname) || a.path.localeCompare(b.path))
         .map((h) => {
           const zone =
@@ -126,7 +132,9 @@ export class ConfigService {
               sessionDuration: accessSessionDurationSchema
                 .catch('24h')
                 .parse(h.accessSessionDuration),
+              browserRendering: h.accessBrowserRendering ?? null,
             },
+            template: h.template,
           };
         }),
     };
@@ -263,8 +271,16 @@ export class ConfigService {
         accessEmails: [...new Set(h.access.emails)],
         accessEmailDomains: [...new Set(h.access.emailDomains)],
         accessSessionDuration: h.access.sessionDuration,
+        accessBrowserRendering: h.access.browserRendering,
+        template: findTemplate(h.template)?.id ?? null,
       };
       const before = existing.get(key);
+      if (before?.source === 'docker') {
+        report.warnings.push(
+          `${label} is managed by the Docker labels of "${before.sourceRef ?? '?'}": left unchanged.`,
+        );
+        continue;
+      }
       if (!before) {
         report.hosts.created.push(label);
         if (!dryRun)
@@ -292,7 +308,9 @@ export class ConfigService {
     }
 
     if (mode === 'replace') {
-      const gone = [...existing.entries()].filter(([key]) => !seen.has(key)).map(([, h]) => h);
+      const gone = [...existing.entries()]
+        .filter(([key, h]) => !seen.has(key) && h.source !== 'docker')
+        .map(([, h]) => h);
       report.hosts.removed = gone.map((h) => `${h.hostname}${h.path ? ` ${h.path}` : ''}`);
       if (!dryRun && gone.length > 0) {
         db.delete(proxyHosts)

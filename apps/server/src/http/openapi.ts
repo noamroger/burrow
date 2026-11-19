@@ -196,6 +196,63 @@ const ops: Operation[] = [
     summary: 'Probe the origin now',
     response: s.originHealthSchema,
   },
+  /* ---- maintenance ---- */
+  {
+    method: 'put',
+    path: '/api/hosts/{id}/maintenance',
+    tag: 'Maintenance',
+    summary: 'Turn maintenance mode on or off for a host',
+    description:
+      'On: the route points at the maintenance server, which answers 503 with the page. `page: null` uses the default page.',
+    body: s.hostMaintenanceInputSchema,
+    response: s.proxyHostSchema,
+  },
+  {
+    method: 'get',
+    path: '/api/maintenance/page',
+    tag: 'Maintenance',
+    summary: 'Default maintenance page',
+    response: s.maintenancePageSchema,
+  },
+  {
+    method: 'put',
+    path: '/api/maintenance/page',
+    tag: 'Maintenance',
+    summary: 'Save the default maintenance page (simple design or full HTML)',
+    body: s.maintenancePageSchema,
+    response: s.maintenancePageSchema,
+  },
+  /* ---- templates ---- */
+  {
+    method: 'get',
+    path: '/api/templates',
+    tag: 'Proxy hosts',
+    summary: 'Service templates (Jellyfin, Home Assistant, Proxmox…) with their origin settings',
+    response: s.serviceTemplateListSchema,
+  },
+  /* ---- docker ---- */
+  {
+    method: 'get',
+    path: '/api/docker',
+    tag: 'Docker discovery',
+    summary: 'Discovery status and the containers with burrow.* labels',
+    response: s.dockerStatusSchema,
+  },
+  {
+    method: 'post',
+    path: '/api/docker/scan',
+    tag: 'Docker discovery',
+    summary: 'Scan the containers now',
+    response: s.dockerStatusSchema,
+  },
+  {
+    method: 'put',
+    path: '/api/docker/settings',
+    tag: 'Docker discovery',
+    summary: 'Turn discovery on or off (published hosts are kept when turned off)',
+    body: s.dockerSettingsSchema,
+    response: s.dockerStatusSchema,
+  },
   /* ---- tunnels ---- */
   {
     method: 'get',

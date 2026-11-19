@@ -6,6 +6,7 @@ import {
   serviceUrlSchema,
   subdomainSchema,
   type AccessSessionDuration,
+  type HostSource,
   type ImportedRoute,
   type OriginHealth,
   type ProxyHost,
@@ -25,6 +26,13 @@ import { keyOfRule } from './ingress.js';
 import { isOwnedRecord, tunnelTarget } from './plan.js';
 import type { Reconciler, SyncScopeItem } from './reconciler.js';
 import type { TunnelService } from './tunnel.js';
+
+/** Who owns a host: the user (`manual`) or a container's labels (`docker`). */
+export interface HostOrigin {
+  source: HostSource;
+  /** Container name for Docker hosts. */
+  ref: string | null;
+}
 
 export interface HostServiceOptions {
   db: Db;
@@ -87,6 +95,16 @@ export class HostService {
         emails: row.accessEmails,
         emailDomains: row.accessEmailDomains,
         sessionDuration: toSessionDuration(row.accessSessionDuration),
+        browserRendering: row.accessBrowserRendering ?? null,
+      },
+      template: row.template,
+      source: row.source,
+      sourceRef: row.sourceRef,
+      expiresAt: row.expiresAt,
+      maintenance: {
+        enabled: row.maintenanceEnabled,
+        until: row.maintenanceUntil,
+        page: row.maintenancePage ?? null,
       },
       sync: { status: row.syncStatus, error: row.syncError, lastSyncedAt: row.lastSyncedAt },
       health,
@@ -196,16 +214,38 @@ export class HostService {
       accessEmails: [...new Set(input.access.emails)],
       accessEmailDomains: [...new Set(input.access.emailDomains)],
       accessSessionDuration: input.access.sessionDuration,
+      accessBrowserRendering: input.access.browserRendering,
+      template: input.template,
+      ...(input.expiresAt !== undefined ? { expiresAt: expiry(input.expiresAt) } : {}),
     };
   }
 
+  /**
+   * Hosts created from Docker labels are changed through the labels: the API
+   * refuses to edit or delete them (`managed` is set by the discovery itself).
+   */
+  private assertEditable(row: ProxyHostRow, managed?: HostOrigin): void {
+    if (row.source === 'docker' && managed?.source !== 'docker') {
+      throw errors.conflict(
+        `${row.hostname} comes from the Docker labels of the container "${row.sourceRef ?? '?'}". Change or remove the labels instead.`,
+        { source: row.source, sourceRef: row.sourceRef },
+      );
+    }
+  }
+
   /** Create a host and publish it. */
-  async create(input: ProxyHostParsedInput, userId: number | null): Promise<ProxyHost> {
+  async create(
+    input: ProxyHostParsedInput,
+    userId: number | null,
+    origin: HostOrigin = { source: 'manual', ref: null },
+  ): Promise<ProxyHost> {
     const { hostname, path } = this.resolve(input);
     const row = this.opts.db
       .insert(proxyHosts)
       .values({
         ...this.values(input, hostname, path, this.resolveTunnel(input)),
+        source: origin.source,
+        sourceRef: origin.ref,
         syncStatus: 'pending',
       })
       .returning()
@@ -225,13 +265,20 @@ export class HostService {
   }
 
   /** Replace a host's settings. */
-  async update(id: number, input: ProxyHostParsedInput, userId: number | null): Promise<ProxyHost> {
+  async update(
+    id: number,
+    input: ProxyHostParsedInput,
+    userId: number | null,
+    managed?: HostOrigin,
+  ): Promise<ProxyHost> {
     const before = this.getRow(id);
+    this.assertEditable(before, managed);
     const { hostname, path } = this.resolve(input, id);
     this.opts.db
       .update(proxyHosts)
       .set({
         ...this.values(input, hostname, path, this.resolveTunnel(input, before.tunnelId)),
+        ...(managed ? { sourceRef: managed.ref } : {}),
         syncStatus: 'pending',
         updatedAt: nowIso(),
       })
@@ -365,8 +412,9 @@ export class HostService {
   }
 
   /** Delete a host and unpublish it. */
-  async remove(id: number, userId: number | null): Promise<void> {
+  async remove(id: number, userId: number | null, managed?: HostOrigin): Promise<void> {
     const row = this.getRow(id);
+    this.assertEditable(row, managed);
     this.opts.db.delete(proxyHosts).where(eq(proxyHosts.id, id)).run();
     this.opts.health.forget(id);
     this.opts.audit.record(userId, 'host.delete', row.hostname + row.path);
@@ -379,6 +427,32 @@ export class HostService {
         'could not unpublish host now; the next reconciliation will clean up',
       );
     }
+  }
+
+  /**
+   * Remove temporary hosts whose time is up (periodic job). Each removal
+   * unpublishes the route, the DNS record and the Access application.
+   * Returns the hostnames removed.
+   */
+  async removeExpired(now = new Date()): Promise<string[]> {
+    const expired = this.rows().filter(
+      (r) => r.expiresAt !== null && Date.parse(r.expiresAt) <= now.getTime(),
+    );
+    const removed: string[] = [];
+    for (const row of expired) {
+      try {
+        await this.remove(row.id, null, { source: row.source, ref: row.sourceRef });
+        this.opts.audit.record(null, 'host.expire', row.hostname + row.path);
+        this.opts.logger.info({ hostname: row.hostname }, 'temporary host expired and removed');
+        removed.push(row.hostname + row.path);
+      } catch (err) {
+        this.opts.logger.warn(
+          { hostname: row.hostname, err: errorMessage(err) },
+          'could not remove expired host',
+        );
+      }
+    }
+    return removed;
   }
 
   /** Probe a host's origin now. */
@@ -427,4 +501,14 @@ function uniqueScope(items: SyncScopeItem[]): SyncScopeItem[] {
     seen.add(key);
     return true;
   });
+}
+
+/** Validate an expiry: null (permanent) or a time in the future, normalised to UTC. */
+function expiry(value: string | null): string | null {
+  if (value === null) return null;
+  const time = Date.parse(value);
+  if (Number.isNaN(time) || time <= Date.now()) {
+    throw errors.validation('The expiry time must be in the future.', { field: 'expiresAt' });
+  }
+  return new Date(time).toISOString();
 }

@@ -171,7 +171,7 @@ export interface CfAccessApp {
 /** Body Burrow sends to create or replace a self-hosted application. */
 export interface CfAccessAppInput {
   name: string;
-  type: 'self_hosted';
+  type: 'self_hosted' | 'ssh' | 'vnc';
   domain: string;
   destinations: Array<{ type: 'public'; uri: string }>;
   session_duration: string;

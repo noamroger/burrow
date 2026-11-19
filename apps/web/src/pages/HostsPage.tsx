@@ -4,7 +4,7 @@
  */
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
-import type { ProxyHost, SyncResult } from '@burrow/shared';
+import { isNonHttpService, serviceProtocol, type ProxyHost, type SyncResult } from '@burrow/shared';
 import {
   useCheckHost,
   useDeleteHost,
@@ -22,10 +22,12 @@ import { HealthIndicator } from '../components/HealthIndicator';
 import { HostDialog } from '../components/HostDialog';
 import { initialValues, toInput } from '../components/HostForm';
 import { Icon } from '../components/Icon';
+import { MaintenanceDialog } from '../components/MaintenanceDialog';
 import { SyncBadge } from '../components/SyncBadge';
 import { SyncResultPanel } from '../components/SyncResultPanel';
 import { TunnelStatusBadge } from '../components/TunnelStatusBadge';
 import { Alert } from '../components/ui/Alert';
+import { Badge } from '../components/ui/Badge';
 import { Button, IconButton } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
@@ -37,6 +39,7 @@ import { useNow } from '../hooks/useNow';
 import { t, tPlural } from '../i18n';
 import { cn } from '../lib/cn';
 import { errorMessage } from '../lib/errors';
+import { formatDateTime, formatRelative } from '../lib/format';
 
 export function filterHosts(hosts: ProxyHost[], query: string): ProxyHost[] {
   const q = query.trim().toLowerCase();
@@ -61,6 +64,7 @@ export function HostsPage() {
   const [editing, setEditing] = useState<ProxyHost | undefined>();
   const [creating, setCreating] = useState(() => params.get('new') === '1');
   const [deleting, setDeleting] = useState<ProxyHost | undefined>();
+  const [maintaining, setMaintaining] = useState<ProxyHost | undefined>();
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
 
   const enabledZones = useMemo(() => zones.data?.filter((z) => z.enabled) ?? [], [zones.data]);
@@ -207,7 +211,13 @@ export function HostsPage() {
                   {t('hosts.noMatch', { query })}
                 </p>
               ) : (
-                <HostTable hosts={visible} now={now} onEdit={setEditing} onDelete={setDeleting} />
+                <HostTable
+                  hosts={visible}
+                  now={now}
+                  onEdit={setEditing}
+                  onDelete={setDeleting}
+                  onMaintenance={setMaintaining}
+                />
               )}
             </>
           )}
@@ -222,6 +232,7 @@ export function HostsPage() {
         onClose={() => setEditing(undefined)}
       />
       <DeleteHostDialog host={deleting} onClose={() => setDeleting(undefined)} />
+      <MaintenanceDialog host={maintaining} onClose={() => setMaintaining(undefined)} />
     </>
   );
 }
@@ -242,6 +253,7 @@ interface RowProps {
   now: number;
   onEdit: (host: ProxyHost) => void;
   onDelete: (host: ProxyHost) => void;
+  onMaintenance: (host: ProxyHost) => void;
 }
 
 function HostTable({
@@ -249,11 +261,13 @@ function HostTable({
   now,
   onEdit,
   onDelete,
+  onMaintenance,
 }: {
   hosts: ProxyHost[];
   now: number;
   onEdit: RowProps['onEdit'];
   onDelete: RowProps['onDelete'];
+  onMaintenance: RowProps['onMaintenance'];
 }) {
   return (
     <>
@@ -309,7 +323,12 @@ function HostTable({
                   <EnabledSwitch host={host} />
                 </td>
                 <td className="px-4 py-3">
-                  <RowActions host={host} onEdit={onEdit} onDelete={onDelete} />
+                  <RowActions
+                    host={host}
+                    onEdit={onEdit}
+                    onDelete={onDelete}
+                    onMaintenance={onMaintenance}
+                  />
                 </td>
               </tr>
             ))}
@@ -336,7 +355,12 @@ function HostTable({
                 <SyncBadge sync={host.sync} />
                 <HealthIndicator health={host.health} now={now} />
               </div>
-              <RowActions host={host} onEdit={onEdit} onDelete={onDelete} />
+              <RowActions
+                host={host}
+                onEdit={onEdit}
+                onDelete={onDelete}
+                onMaintenance={onMaintenance}
+              />
             </div>
           </li>
         ))}
@@ -381,6 +405,33 @@ function HostnameLink({ host }: { host: ProxyHost }) {
           {t('hosts.pathLabel')} {host.path}
         </p>
       ) : null}
+      {isNonHttpService(host.service) ? (
+        <p className="mt-1">
+          <Badge tone="accent">
+            {serviceProtocol(host.service).toUpperCase()}
+            {host.access.browserRendering ? ` · ${t('hosts.inBrowser')}` : ''}
+          </Badge>
+        </p>
+      ) : null}
+      {host.maintenance.enabled ? (
+        <p className="mt-1">
+          <Badge tone="warning" dot>
+            {t('hosts.inMaintenance')}
+          </Badge>
+        </p>
+      ) : null}
+      {host.expiresAt ? (
+        <p className="mt-1" title={formatDateTime(host.expiresAt)}>
+          <Badge tone="warning">
+            {t('hosts.expires', { when: formatRelative(host.expiresAt) })}
+          </Badge>
+        </p>
+      ) : null}
+      {host.source === 'docker' ? (
+        <p className="mt-1" title={t('hosts.managedByDocker', { name: host.sourceRef ?? '?' })}>
+          <Badge tone="info">{t('hosts.fromDocker', { name: host.sourceRef ?? '?' })}</Badge>
+        </p>
+      ) : null}
       {several && host.tunnelName ? (
         <p className="mt-0.5 truncate text-xs text-fg-muted">
           {t('hosts.viaTunnel', { name: host.tunnelName })}
@@ -396,7 +447,7 @@ function EnabledSwitch({ host }: { host: ProxyHost }) {
   return (
     <Switch
       checked={save.isPending ? !host.enabled : host.enabled}
-      disabled={save.isPending}
+      disabled={save.isPending || host.source === 'docker'}
       label={t(host.enabled ? 'hosts.disable' : 'hosts.enable', { hostname: host.hostname })}
       onChange={(enabled) =>
         save.mutate(
@@ -408,7 +459,7 @@ function EnabledSwitch({ host }: { host: ProxyHost }) {
   );
 }
 
-function RowActions({ host, onEdit, onDelete }: Omit<RowProps, 'now'>) {
+function RowActions({ host, onEdit, onDelete, onMaintenance }: Omit<RowProps, 'now'>) {
   const check = useCheckHost();
   const toast = useToast();
   return (
@@ -435,18 +486,29 @@ function RowActions({ host, onEdit, onDelete }: Omit<RowProps, 'now'>) {
         }
       />
       <IconButton
-        icon="pencil"
+        icon="coffee"
         size="sm"
-        label={t('hosts.edit', { hostname: host.hostname })}
-        onClick={() => onEdit(host)}
+        label={t('hosts.maintenance', { hostname: host.hostname })}
+        onClick={() => onMaintenance(host)}
+        className={host.maintenance.enabled ? 'text-warning' : undefined}
       />
-      <IconButton
-        icon="trash"
-        size="sm"
-        label={t('hosts.delete', { hostname: host.hostname })}
-        onClick={() => onDelete(host)}
-        className="hover:text-danger"
-      />
+      {host.source === 'docker' ? null : (
+        <>
+          <IconButton
+            icon="pencil"
+            size="sm"
+            label={t('hosts.edit', { hostname: host.hostname })}
+            onClick={() => onEdit(host)}
+          />
+          <IconButton
+            icon="trash"
+            size="sm"
+            label={t('hosts.delete', { hostname: host.hostname })}
+            onClick={() => onDelete(host)}
+            className="hover:text-danger"
+          />
+        </>
+      )}
     </div>
   );
 }

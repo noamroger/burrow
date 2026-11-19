@@ -17,10 +17,12 @@ import { authRoutes } from './routes/auth.js';
 import { cloudflareRoutes } from './routes/cloudflare.js';
 import { configRoutes } from './routes/config.js';
 import { backupRoutes } from './routes/backups.js';
+import { dockerRoutes } from './routes/docker.js';
 import { driftRoutes } from './routes/drift.js';
 import { healthRoutes } from './routes/health.js';
 import { hostRoutes } from './routes/hosts.js';
 import { logRoutes } from './routes/logs.js';
+import { maintenanceRoutes } from './routes/maintenance.js';
 import { tokenRoutes } from './routes/tokens.js';
 import { tunnelRoutes } from './routes/tunnel.js';
 
@@ -150,6 +152,8 @@ export async function buildApp(
     await configRoutes(scope, ctx);
     await driftRoutes(scope, ctx);
     await backupRoutes(scope, ctx);
+    await dockerRoutes(scope, ctx);
+    await maintenanceRoutes(scope, ctx);
     await tokenRoutes(scope, ctx);
   });
 

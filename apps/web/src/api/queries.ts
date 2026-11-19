@@ -22,6 +22,8 @@ import {
   tokensApi,
   configApi,
   driftApi,
+  dockerApi,
+  maintenanceApi,
   backupsApi,
   zonesApi,
 } from './endpoints';
@@ -42,6 +44,8 @@ export const queryKeys = {
   tokens: ['tokens'] as const,
   drift: ['drift'] as const,
   backups: ['backups'] as const,
+  docker: ['docker'] as const,
+  maintenancePage: ['maintenance', 'page'] as const,
 };
 
 /** Polling intervals (ms). */
@@ -274,6 +278,59 @@ export function useDriftSettings() {
     mutationFn: driftApi.settings,
     onSuccess: (report) => qc.setQueryData(queryKeys.drift, report),
   });
+}
+
+/* ----------------------------- maintenance ---------------------------- */
+
+export function useMaintenancePage() {
+  return useQuery({ queryKey: queryKeys.maintenancePage, queryFn: maintenanceApi.page });
+}
+
+export function useSaveMaintenancePage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: maintenanceApi.savePage,
+    onSuccess: (page) => qc.setQueryData(queryKeys.maintenancePage, page),
+  });
+}
+
+export function useHostMaintenance() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      input,
+    }: {
+      id: number;
+      input: Parameters<typeof maintenanceApi.setHost>[1];
+    }) => maintenanceApi.setHost(id, input),
+    onSettled: () => void qc.invalidateQueries({ queryKey: queryKeys.hosts }),
+  });
+}
+
+/* ------------------------------- docker ------------------------------- */
+
+export function useDocker() {
+  return useQuery({ queryKey: queryKeys.docker, queryFn: dockerApi.get, refetchInterval: 30_000 });
+}
+
+function useDockerMutation<T>(fn: (arg: T) => ReturnType<typeof dockerApi.get>) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: (status) => {
+      qc.setQueryData(queryKeys.docker, status);
+      void qc.invalidateQueries({ queryKey: queryKeys.hosts });
+    },
+  });
+}
+
+export function useDockerScan() {
+  return useDockerMutation<void>(() => dockerApi.scan());
+}
+
+export function useDockerSettings() {
+  return useDockerMutation<boolean>(dockerApi.setEnabled);
 }
 
 /* ------------------------------- backups ------------------------------ */

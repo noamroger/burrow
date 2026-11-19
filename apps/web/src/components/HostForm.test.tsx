@@ -53,8 +53,65 @@ describe('HostForm', () => {
       path: '',
       enabled: true,
       options: { noTLSVerify: false, httpHostHeader: '', originServerName: '' },
-      access: { enabled: false, emails: [], emailDomains: [], sessionDuration: '24h' },
+      access: {
+        enabled: false,
+        emails: [],
+        emailDomains: [],
+        sessionDuration: '24h',
+        browserRendering: null,
+      },
+      template: null,
     });
+  });
+
+  it('sets up an SSH host with a browser terminal and shows the client command', async () => {
+    const { user, onSubmit } = setup();
+    await user.selectOptions(screen.getByLabelText(/Start from a template/), 'ssh');
+    expect(screen.getByLabelText('Service URL')).toHaveValue('ssh://192.168.1.10:22');
+    expect(screen.getByTestId('client-command')).toHaveTextContent(
+      'cloudflared access ssh --hostname %h',
+    );
+    expect(screen.getByLabelText('Open in the browser')).toHaveValue('ssh');
+    await user.type(screen.getByLabelText('Allowed emails'), 'me@example.com');
+    await user.click(screen.getByRole('button', { name: 'Create host' }));
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        service: 'ssh://192.168.1.10:22',
+        access: expect.objectContaining({ enabled: true, browserRendering: 'ssh' }),
+      }),
+    );
+  });
+
+  it('makes a temporary host that expires after the chosen duration', async () => {
+    const { user, onSubmit } = setup();
+    await user.type(screen.getByLabelText('Subdomain'), 'demo');
+    await user.type(screen.getByLabelText('Service URL'), 'http://10.0.0.1:3000');
+    await user.selectOptions(screen.getByLabelText('Remove automatically'), '120');
+    const before = Date.now();
+    await user.click(screen.getByRole('button', { name: 'Create host' }));
+    const input = (onSubmit.mock.calls[0] as unknown as [{ expiresAt: string }])[0];
+    const delta = Date.parse(input.expiresAt) - before;
+    expect(delta).toBeGreaterThan(119 * 60_000);
+    expect(delta).toBeLessThan(121 * 60_000);
+  });
+
+  it('prefills the service and options from a template, keeping a typed address', async () => {
+    const { user, onSubmit } = setup();
+    await user.type(screen.getByLabelText('Service URL'), 'http://192.168.1.2');
+    await user.selectOptions(screen.getByLabelText(/Start from a template/), 'proxmox');
+
+    expect(screen.getByLabelText('Subdomain')).toHaveValue('proxmox');
+    expect(screen.getByLabelText('Service URL')).toHaveValue('https://192.168.1.2:8006');
+    expect(screen.getByTestId('template-notes')).toHaveTextContent(/self-signed/);
+
+    await user.click(screen.getByRole('button', { name: 'Create host' }));
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        service: 'https://192.168.1.2:8006',
+        options: { noTLSVerify: true, httpHostHeader: '', originServerName: '' },
+        template: 'proxmox',
+      }),
+    );
   });
 
   it('protects a host with Cloudflare Access: emails, domains and session length', async () => {
@@ -85,6 +142,7 @@ describe('HostForm', () => {
           emails: ['me@example.com', 'Friend@Example.net'],
           emailDomains: ['@family.example'],
           sessionDuration: '168h',
+          browserRendering: null,
         },
       }),
     );
@@ -109,6 +167,7 @@ describe('HostForm', () => {
           emails: ['me@example.com'],
           emailDomains: [],
           sessionDuration: '6h',
+          browserRendering: null,
         },
       }),
     });
@@ -147,6 +206,7 @@ describe('accessChanged', () => {
     emails: ['me@example.com'],
     emailDomains: [],
     sessionDuration: '24h',
+    browserRendering: null,
   } as const;
   const priv = makeHost({ access: { ...on, emails: [...on.emails], emailDomains: [] } });
   const pub = makeHost();

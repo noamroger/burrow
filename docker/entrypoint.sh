@@ -53,13 +53,29 @@ if [ "$(id -u)" = "0" ]; then
     export HOME=/tmp
   fi
 
-  if ! setpriv --reuid="$PUID" --regid="$PGID" --clear-groups --inh-caps=-all \
+  # Docker discovery: when the Docker socket is mounted, join its group so
+  # the unprivileged user can read it. A socket owned by root's group (gid 0)
+  # is not joined: use a docker-socket-proxy (DOCKER_HOST=tcp://...) instead.
+  GROUPS_OPT="--clear-groups"
+  DOCKER_SOCK="${DOCKER_HOST:-unix:///var/run/docker.sock}"
+  DOCKER_SOCK="${DOCKER_SOCK#unix://}"
+  if [ -S "$DOCKER_SOCK" ]; then
+    SOCK_GID="$(stat -c '%g' "$DOCKER_SOCK")"
+    if [ "$SOCK_GID" != "0" ]; then
+      GROUPS_OPT="--groups=$SOCK_GID"
+    else
+      echo "burrow: warning: $DOCKER_SOCK belongs to group 0; Docker discovery will not be able" \
+           "to read it. Use a docker-socket-proxy and DOCKER_HOST=tcp://... instead." >&2
+    fi
+  fi
+
+  if ! setpriv --reuid="$PUID" --regid="$PGID" "$GROUPS_OPT" --inh-caps=-all \
          true 2>/dev/null; then
     die "cannot switch to uid $PUID (the container lacks the SETUID/SETGID capabilities)." \
         "if you use 'cap_drop: [ALL]', add:  cap_add: [CHOWN, SETUID, SETGID]" \
         "or run the container directly as a non-root user with  user: \"$PUID:$PGID\""
   fi
-  exec setpriv --reuid="$PUID" --regid="$PGID" --clear-groups --inh-caps=-all \
+  exec setpriv --reuid="$PUID" --regid="$PGID" "$GROUPS_OPT" --inh-caps=-all \
     "$0" "$@"
 fi
 

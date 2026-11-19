@@ -10,6 +10,11 @@
  * value returned by `GET /api/auth/me`.
  */
 import { z } from 'zod';
+import { hostMaintenanceSchema } from './maintenance.js';
+import { templateIdSchema } from './templates.js';
+
+export * from './templates.js';
+export * from './maintenance.js';
 
 /* ------------------------------------------------------------------ */
 /* Common                                                              */
@@ -346,6 +351,45 @@ export const ACCESS_SESSION_DURATIONS = ['30m', '6h', '12h', '24h', '168h', '720
 export const accessSessionDurationSchema = z.enum(ACCESS_SESSION_DURATIONS);
 export type AccessSessionDuration = z.infer<typeof accessSessionDurationSchema>;
 
+/**
+ * Browser-rendered terminals Burrow can set up (an Access application of type
+ * `ssh` or `vnc`). Browser RDP needs a private network route and an Access
+ * target instead, so RDP hosts use `cloudflared access rdp` on the client.
+ */
+export const BROWSER_RENDERINGS = ['ssh', 'vnc'] as const;
+export const browserRenderingSchema = z.enum(BROWSER_RENDERINGS).nullable();
+export type BrowserRendering = z.infer<typeof browserRenderingSchema>;
+
+/** Protocol of a service URL: `http`, `https`, `ssh`, `rdp`, `tcp`, `smb`, `unix`… */
+export function serviceProtocol(service: string): string {
+  return /^([a-z+]+):\/\//i.exec(service.trim())?.[1]?.toLowerCase() ?? '';
+}
+
+/** True for services visitors cannot open in a browser without help (SSH, RDP, raw TCP…). */
+export function isNonHttpService(service: string): boolean {
+  return ['ssh', 'rdp', 'tcp', 'smb'].includes(serviceProtocol(service));
+}
+
+/**
+ * Command a user runs on their own machine to reach a non-HTTP host through
+ * Cloudflare (`cloudflared` must be installed there). Null for HTTP services.
+ */
+export function clientCommand(hostname: string, service: string): string | null {
+  const port = /:(\d+)\/?$/.exec(service.trim())?.[1];
+  switch (serviceProtocol(service)) {
+    case 'ssh':
+      return `ssh -o ProxyCommand="cloudflared access ssh --hostname %h" user@${hostname}`;
+    case 'rdp':
+      return `cloudflared access rdp --hostname ${hostname} --url rdp://localhost:3389`;
+    case 'smb':
+      return `cloudflared access smb --hostname ${hostname} --url localhost:8445`;
+    case 'tcp':
+      return `cloudflared access tcp --hostname ${hostname} --url localhost:${port ?? '9000'}`;
+    default:
+      return null;
+  }
+}
+
 /** Maximum number of emails + email domains on one host. */
 export const ACCESS_MAX_RULES = 50;
 
@@ -378,8 +422,21 @@ export const accessSettingsInputSchema = z
     emails: z.array(accessEmailSchema).optional().default([]),
     emailDomains: z.array(accessEmailDomainSchema).optional().default([]),
     sessionDuration: accessSessionDurationSchema.optional().default('24h'),
+    /**
+     * Browser-rendered terminal: Cloudflare shows an SSH terminal or a VNC
+     * desktop in the browser at https://<hostname>, after the Access login.
+     * Needs an `ssh://` or `tcp://` service and no path.
+     */
+    browserRendering: browserRenderingSchema.optional().default(null),
   })
   .superRefine((value, ctx) => {
+    if (value.browserRendering && !value.enabled) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['browserRendering'],
+        message: 'Browser rendering needs Cloudflare Access protection',
+      });
+    }
     const total = value.emails.length + value.emailDomains.length;
     if (value.enabled && total === 0) {
       ctx.addIssue({
@@ -403,31 +460,67 @@ export const accessSettingsSchema = z.object({
   emails: z.array(z.string()),
   emailDomains: z.array(z.string()),
   sessionDuration: accessSessionDurationSchema,
+  browserRendering: browserRenderingSchema,
 });
 export type AccessSettings = z.infer<typeof accessSettingsSchema>;
 
-export const proxyHostInputSchema = z.object({
-  subdomain: subdomainSchema,
-  /** Tunnel to publish through (Burrow id). Defaults to the default tunnel; kept on update when omitted. */
-  tunnelId: z.number().int().positive().optional(),
-  zoneId: z.string().regex(/^[a-f0-9]{32}$/),
-  service: serviceUrlSchema,
-  path: ingressPathSchema.optional().default(''),
-  enabled: z.boolean().optional().default(true),
-  options: z
-    .object({
-      noTLSVerify: z.boolean().optional().default(false),
-      httpHostHeader: z.string().trim().max(255).optional().default(''),
-      originServerName: z.string().trim().max(255).optional().default(''),
-    })
-    .optional()
-    .default({}),
-  /** Cloudflare Access protection. Applies to the whole hostname (every path). */
-  access: accessSettingsInputSchema.optional().default({}),
-});
+export const proxyHostInputSchema = z
+  .object({
+    subdomain: subdomainSchema,
+    /** Tunnel to publish through (Burrow id). Defaults to the default tunnel; kept on update when omitted. */
+    tunnelId: z.number().int().positive().optional(),
+    zoneId: z.string().regex(/^[a-f0-9]{32}$/),
+    service: serviceUrlSchema,
+    path: ingressPathSchema.optional().default(''),
+    enabled: z.boolean().optional().default(true),
+    options: z
+      .object({
+        noTLSVerify: z.boolean().optional().default(false),
+        httpHostHeader: z.string().trim().max(255).optional().default(''),
+        originServerName: z.string().trim().max(255).optional().default(''),
+      })
+      .optional()
+      .default({}),
+    /** Cloudflare Access protection. Applies to the whole hostname (every path). */
+    access: accessSettingsInputSchema.optional().default({}),
+    /** Service template the host was made from (see GET /api/templates), or null. */
+    template: templateIdSchema.optional().default(null),
+    /**
+     * Temporary host: removed automatically (route, DNS record, Access app) at
+     * this time (ISO 8601, in the future). `null` = permanent. Omitted on update:
+     * unchanged.
+     */
+    expiresAt: z.string().datetime({ offset: true }).nullable().optional(),
+  })
+  .superRefine((host, ctx) => {
+    const rendering = host.access.browserRendering;
+    if (!rendering) return;
+    const protocol = serviceProtocol(host.service);
+    const ok = rendering === 'ssh' ? ['ssh', 'tcp'].includes(protocol) : protocol === 'tcp';
+    if (!ok) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['access', 'browserRendering'],
+        message:
+          rendering === 'ssh'
+            ? 'A browser SSH terminal needs an ssh:// service, e.g. ssh://192.168.1.10:22'
+            : 'A browser VNC desktop needs a tcp:// service, e.g. tcp://192.168.1.10:5900',
+      });
+    }
+    if (host.path) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['path'],
+        message: 'Browser rendering works on a whole hostname: leave the path empty',
+      });
+    }
+  });
 /** POST /api/hosts body. PUT /api/hosts/:id body (full replace). */
 export type ProxyHostInput = z.input<typeof proxyHostInputSchema>;
 export type ProxyHostParsedInput = z.output<typeof proxyHostInputSchema>;
+
+/** Durations offered for temporary hosts, in minutes. */
+export const TEMPORARY_DURATIONS = [60, 120, 360, 1440, 10080] as const;
 
 export const SYNC_STATUSES = ['pending', 'synced', 'error', 'drift'] as const;
 export const syncStatusSchema = z.enum(SYNC_STATUSES);
@@ -446,6 +539,10 @@ export const originHealthSchema = z.object({
   checkedAt: z.string().nullable(),
 });
 export type OriginHealth = z.infer<typeof originHealthSchema>;
+
+export const HOST_SOURCES = ['manual', 'docker'] as const;
+export const hostSourceSchema = z.enum(HOST_SOURCES);
+export type HostSource = z.infer<typeof hostSourceSchema>;
 
 export const proxyHostSchema = z.object({
   id: z.number().int(),
@@ -467,6 +564,19 @@ export const proxyHostSchema = z.object({
     extra: z.record(z.unknown()),
   }),
   access: accessSettingsSchema,
+  /** Service template the host was made from, or null. */
+  template: z.string().nullable(),
+  /**
+   * Where the host comes from: `manual` (UI, API, import) or `docker`
+   * (container labels; edit the labels, not the host).
+   */
+  source: hostSourceSchema,
+  /** For `docker`: the container name. */
+  sourceRef: z.string().nullable(),
+  /** Temporary host: removed automatically at this time. */
+  expiresAt: z.string().nullable(),
+  /** Maintenance mode: visitors get the maintenance page instead of the service. */
+  maintenance: hostMaintenanceSchema,
   sync: z.object({
     status: syncStatusSchema,
     error: z.string().nullable(),
@@ -707,6 +817,49 @@ export const createdApiTokenSchema = apiTokenSchema.extend({
 export type CreatedApiToken = z.infer<typeof createdApiTokenSchema>;
 
 /* ------------------------------------------------------------------ */
+/* Docker auto-discovery                                               */
+/* ------------------------------------------------------------------ */
+
+export const DOCKER_CONTAINER_STATUSES = ['published', 'pending', 'error', 'ignored'] as const;
+
+/** A container with `burrow.*` labels, as seen by the last scan. */
+export const dockerContainerSchema = z.object({
+  /** Short container id. */
+  id: z.string(),
+  name: z.string(),
+  image: z.string(),
+  /** Docker state: running, exited… */
+  state: z.string(),
+  hostname: z.string().nullable(),
+  path: z.string(),
+  service: z.string().nullable(),
+  /** `published` (host in sync), `pending`, `error` (see message) or `ignored` (burrow.enable=false). */
+  status: z.enum(DOCKER_CONTAINER_STATUSES),
+  message: z.string().nullable(),
+  hostId: z.number().int().nullable(),
+});
+export type DockerContainerInfo = z.infer<typeof dockerContainerSchema>;
+
+/** GET /api/docker -> 200 */
+export const dockerStatusSchema = z.object({
+  /** Discovery is off by default. */
+  enabled: z.boolean(),
+  /** DOCKER_HOST Burrow reads from, e.g. `unix:///var/run/docker.sock`. */
+  endpoint: z.string(),
+  /** Whether the last scan could reach Docker (null before the first scan). */
+  reachable: z.boolean().nullable(),
+  error: z.string().nullable(),
+  lastScanAt: z.string().nullable(),
+  intervalSeconds: z.number().int(),
+  containers: z.array(dockerContainerSchema),
+});
+export type DockerStatus = z.infer<typeof dockerStatusSchema>;
+
+/** PUT /api/docker/settings -> 200 DockerStatus. POST /api/docker/scan -> 200 DockerStatus. */
+export const dockerSettingsSchema = z.object({ enabled: z.boolean() });
+export type DockerSettingsInput = z.infer<typeof dockerSettingsSchema>;
+
+/* ------------------------------------------------------------------ */
 /* Configuration export / import                                       */
 /* ------------------------------------------------------------------ */
 
@@ -732,6 +885,7 @@ export const configHostSchema = z.object({
     .optional()
     .default({}),
   access: accessSettingsInputSchema.optional().default({}),
+  template: z.string().trim().toLowerCase().nullable().optional().default(null),
 });
 export type ConfigHost = z.input<typeof configHostSchema>;
 

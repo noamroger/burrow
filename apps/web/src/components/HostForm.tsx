@@ -9,8 +9,17 @@ import { useId, useMemo, useState, type FormEvent } from 'react';
 import {
   ACCESS_SESSION_DURATIONS,
   buildHostname,
+  clientCommand,
+  findTemplate,
+  isNonHttpService,
+  serviceProtocol,
   proxyHostInputSchema,
+  SERVICE_TEMPLATES,
+  TEMPLATE_CATEGORIES,
+  TEMPORARY_DURATIONS,
+  templateServiceUrl,
   type AccessSessionDuration,
+  type ServiceTemplate,
   type ProxyHost,
   type ProxyHostInput,
   type TunnelSummary,
@@ -19,6 +28,7 @@ import {
 import { isApiError } from '../api/client';
 import { t } from '../i18n';
 import { errorMessage } from '../lib/errors';
+import { formatMinutes, formatRelative } from '../lib/format';
 import { fieldErrors } from '../lib/zod';
 import { Icon } from './Icon';
 import { Alert } from './ui/Alert';
@@ -42,6 +52,15 @@ export interface HostFormValues {
   accessEmails: string;
   accessEmailDomains: string;
   accessSessionDuration: AccessSessionDuration;
+  /** Browser-rendered terminal for SSH / VNC hosts; '' for none. */
+  browserRendering: '' | 'ssh' | 'vnc';
+  /** Template id, '' for none. */
+  template: string;
+  /**
+   * Temporary host: '' keeps the current expiry (none for a new host),
+   * 'never' makes it permanent, a number of minutes sets a new expiry.
+   */
+  expiresIn: string;
 }
 
 /** Split a free-text list on new lines, commas, semicolons and spaces. */
@@ -74,6 +93,9 @@ export function initialValues(host: ProxyHost | undefined, zones: Zone[]): HostF
       accessEmails: host.access.emails.join('\n'),
       accessEmailDomains: host.access.emailDomains.join('\n'),
       accessSessionDuration: host.access.sessionDuration,
+      browserRendering: host.access.browserRendering ?? '',
+      template: host.template ?? '',
+      expiresIn: '',
     };
   }
   return {
@@ -90,6 +112,29 @@ export function initialValues(host: ProxyHost | undefined, zones: Zone[]): HostF
     accessEmails: '',
     accessEmailDomains: '',
     accessSessionDuration: '24h',
+    browserRendering: '',
+    template: '',
+    expiresIn: '',
+  };
+}
+
+/**
+ * Apply a template: the service URL and origin options are replaced, the
+ * subdomain is only filled when empty. An address the user already typed
+ * (host or IP) is kept.
+ */
+export function applyTemplate(values: HostFormValues, template: ServiceTemplate): HostFormValues {
+  const typed = /^[a-z+]+:\/\/([^/:]+)/i.exec(values.service.trim())?.[1];
+  return {
+    ...values,
+    template: template.id,
+    subdomain: values.subdomain.trim() ? values.subdomain : template.subdomain,
+    service: templateServiceUrl(template, typed ?? template.container),
+    noTLSVerify: template.options.noTLSVerify,
+    httpHostHeader: template.options.httpHostHeader,
+    originServerName: template.options.originServerName,
+    browserRendering: template.browserRendering ?? '',
+    accessEnabled: template.browserRendering ? true : values.accessEnabled,
   };
 }
 
@@ -111,7 +156,15 @@ export function toInput(values: HostFormValues): ProxyHostInput {
       emails: splitList(values.accessEmails),
       emailDomains: splitList(values.accessEmailDomains),
       sessionDuration: values.accessSessionDuration,
+      browserRendering:
+        values.accessEnabled && values.browserRendering ? values.browserRendering : null,
     },
+    template: values.template || null,
+    ...(values.expiresIn === 'never'
+      ? { expiresAt: null }
+      : values.expiresIn
+        ? { expiresAt: new Date(Date.now() + Number(values.expiresIn) * 60_000).toISOString() }
+        : {}),
   };
 }
 
@@ -203,6 +256,15 @@ export function HostForm({ host, zones, tunnels = [], onSubmit, onCancel }: Host
   return (
     <form onSubmit={handleSubmit} noValidate className="space-y-5">
       {serverError ? <ServerError error={serverError} hostname={fqdn} /> : null}
+
+      <TemplatePicker
+        id={id('template')}
+        value={values.template}
+        onChange={(templateId) => {
+          const template = findTemplate(templateId);
+          setValues((v) => (template ? applyTemplate(v, template) : { ...v, template: '' }));
+        }}
+      />
 
       <fieldset className="space-y-2">
         <legend className="mb-1.5 text-sm font-medium text-fg">{t('host.publicHostname')}</legend>
@@ -318,6 +380,10 @@ export function HostForm({ host, zones, tunnels = [], onSubmit, onCancel }: Host
         />
       </Field>
 
+      {isNonHttpService(values.service) ? (
+        <NonHttpHelp hostname={fqdn || 'host.example.com'} service={values.service} />
+      ) : null}
+
       {tunnels.length > 1 ? (
         <Field id={id('tunnel')} label={t('host.tunnel')} hint={t('host.tunnelHint')}>
           <Select
@@ -353,6 +419,33 @@ export function HostForm({ host, zones, tunnels = [], onSubmit, onCancel }: Host
           className="font-mono"
           aria-describedby={describedBy(id('path'), { hint: true, error: errors.path })}
         />
+      </Field>
+
+      <Field
+        id={id('expiresIn')}
+        label={t('host.expiry.label')}
+        hint={
+          host?.expiresAt
+            ? t('host.expiry.current', { when: formatRelative(host.expiresAt) })
+            : t('host.expiry.hint')
+        }
+      >
+        <Select
+          id={id('expiresIn')}
+          value={values.expiresIn}
+          onChange={(e) => set('expiresIn', e.target.value)}
+          aria-describedby={describedBy(id('expiresIn'), { hint: true })}
+        >
+          <option value="">
+            {host?.expiresAt ? t('host.expiry.keep') : t('host.expiry.never')}
+          </option>
+          {host?.expiresAt ? <option value="never">{t('host.expiry.never')}</option> : null}
+          {TEMPORARY_DURATIONS.map((m) => (
+            <option key={m} value={String(m)}>
+              {t('host.expiry.after', { duration: formatMinutes(m) })}
+            </option>
+          ))}
+        </Select>
       </Field>
 
       <fieldset className="space-y-4 rounded-lg border border-border px-3.5 py-3.5">
@@ -437,6 +530,30 @@ export function HostForm({ host, zones, tunnels = [], onSubmit, onCancel }: Host
                 ))}
               </Select>
             </Field>
+            {isNonHttpService(values.service) ? (
+              <Field
+                id={id('browserRendering')}
+                label={t('host.browser.label')}
+                hint={t('host.browser.hint')}
+                error={errors['access.browserRendering']}
+              >
+                <Select
+                  id={id('browserRendering')}
+                  value={values.browserRendering}
+                  onChange={(e) =>
+                    set('browserRendering', e.target.value as HostFormValues['browserRendering'])
+                  }
+                  aria-describedby={describedBy(id('browserRendering'), {
+                    hint: true,
+                    error: errors['access.browserRendering'],
+                  })}
+                >
+                  <option value="">{t('host.browser.off')}</option>
+                  <option value="ssh">{t('host.browser.ssh')}</option>
+                  <option value="vnc">{t('host.browser.vnc')}</option>
+                </Select>
+              </Field>
+            ) : null}
             <p className="text-xs leading-relaxed text-fg-muted">
               {t('host.access.wholeHostname', { hostname: fqdn || '…' })}
             </p>
@@ -543,6 +660,80 @@ function ServerError({ error, hostname }: { error: unknown; hostname: string }) 
   return (
     <Alert tone="danger" title={t('host.saveFailed')}>
       {errorMessage(error)}
+    </Alert>
+  );
+}
+
+function TemplatePicker({
+  id,
+  value,
+  onChange,
+}: {
+  id: string;
+  value: string;
+  onChange: (templateId: string) => void;
+}) {
+  const template = findTemplate(value);
+  return (
+    <div className="space-y-2.5">
+      <Field id={id} label={t('host.template.label')} aside={t('common.optional')}>
+        <Select id={id} value={value} onChange={(e) => onChange(e.target.value)}>
+          <option value="">{t('host.template.none')}</option>
+          {TEMPLATE_CATEGORIES.map((category) => {
+            const items = SERVICE_TEMPLATES.filter((x) => x.category === category);
+            if (items.length === 0) return null;
+            return (
+              <optgroup key={category} label={t(`host.template.category.${category}`)}>
+                {items.map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {x.name}
+                  </option>
+                ))}
+              </optgroup>
+            );
+          })}
+        </Select>
+      </Field>
+      {template ? <TemplateNotes template={template} /> : null}
+    </div>
+  );
+}
+
+function TemplateNotes({ template }: { template: ServiceTemplate }) {
+  const facts = [
+    template.websockets ? t('host.template.websockets') : null,
+    template.options.noTLSVerify ? t('host.template.noTLSVerify') : null,
+    template.recommendAccess ? t('host.template.recommendAccess') : null,
+  ].filter((x): x is string => !!x);
+  if (facts.length === 0 && template.notes.length === 0) {
+    return <p className="text-xs text-fg-muted">{template.description}</p>;
+  }
+  return (
+    <Alert tone="info" title={t('host.template.notesTitle', { name: template.name })}>
+      <ul className="list-disc space-y-1 pl-4" data-testid="template-notes">
+        {[...facts, ...template.notes].map((note) => (
+          <li key={note}>{note}</li>
+        ))}
+      </ul>
+    </Alert>
+  );
+}
+
+function NonHttpHelp({ hostname, service }: { hostname: string; service: string }) {
+  const command = clientCommand(hostname, service);
+  const protocol = serviceProtocol(service).toUpperCase();
+  return (
+    <Alert tone="info" title={t('host.nonHttp.title', { protocol })}>
+      <p>{t('host.nonHttp.body')}</p>
+      {command ? (
+        <code
+          data-testid="client-command"
+          className="mt-2 block overflow-x-auto rounded bg-surface-2 px-2 py-1.5 font-mono text-[12px] whitespace-pre text-fg"
+        >
+          {command}
+        </code>
+      ) : null}
+      {protocol === 'RDP' ? <p className="mt-2">{t('host.nonHttp.rdp')}</p> : null}
     </Alert>
   );
 }
