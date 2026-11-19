@@ -204,6 +204,29 @@ const ops: Operation[] = [
     summary: 'Service templates (Jellyfin, Home Assistant, Proxmox…) with their origin settings',
     response: s.serviceTemplateListSchema,
   },
+  /* ---- docker ---- */
+  {
+    method: 'get',
+    path: '/api/docker',
+    tag: 'Docker discovery',
+    summary: 'Discovery status and the containers with burrow.* labels',
+    response: s.dockerStatusSchema,
+  },
+  {
+    method: 'post',
+    path: '/api/docker/scan',
+    tag: 'Docker discovery',
+    summary: 'Scan the containers now',
+    response: s.dockerStatusSchema,
+  },
+  {
+    method: 'put',
+    path: '/api/docker/settings',
+    tag: 'Docker discovery',
+    summary: 'Turn discovery on or off (published hosts are kept when turned off)',
+    body: s.dockerSettingsSchema,
+    response: s.dockerStatusSchema,
+  },
   /* ---- tunnels ---- */
   {
     method: 'get',

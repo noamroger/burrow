@@ -7,6 +7,7 @@ import { pino } from 'pino';
 import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
 import { createContext, type AppContext } from '../src/context.js';
+import type { DockerApi } from '../src/docker/client.js';
 import { MockCloudflare } from '../mock/cloudflare.js';
 
 export const FAKE_CLOUDFLARED = join(
@@ -26,7 +27,9 @@ export interface TestApp {
 }
 
 /** A full Burrow app (fresh data dir) wired to an in-memory Cloudflare mock. */
-export async function createTestApp(opts: { apiRateLimit?: number } = {}): Promise<TestApp> {
+export async function createTestApp(
+  opts: { apiRateLimit?: number; docker?: DockerApi; dockerSelfHostname?: string } = {},
+): Promise<TestApp> {
   const mock = new MockCloudflare();
   await mock.listen();
   const dataDir = mkdtempSync(join(tmpdir(), 'burrow-test-'));
@@ -44,6 +47,8 @@ export async function createTestApp(opts: { apiRateLimit?: number } = {}): Promi
     cloudflareRetryBaseMs: 1,
     supervisor: { backoff: { initialMs: 50, maxMs: 200 }, killTimeoutMs: 1000 },
     healthTimeoutMs: 1000,
+    docker: opts.docker,
+    dockerSelfHostname: opts.dockerSelfHostname,
   });
   const app = await buildApp(ctx, { apiRateLimit: opts.apiRateLimit ?? 10_000 });
   return {

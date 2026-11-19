@@ -10,6 +10,7 @@ import {
   backupStatusSchema,
   type BackupSettingsInput,
   driftReportSchema,
+  dockerStatusSchema,
   createdApiTokenSchema,
   cloudflareSettingsSchema,
   importTunnelResultSchema,
@@ -129,6 +130,12 @@ export const driftApi = {
   resolve: (strategy: 'revert' | 'keep') =>
     api.post('/drift/resolve', { strategy }, driftReportSchema),
   settings: (autoRepair: boolean) => api.put('/drift/settings', { autoRepair }, driftReportSchema),
+};
+
+export const dockerApi = {
+  get: () => api.get('/docker', dockerStatusSchema),
+  scan: () => api.post('/docker/scan', undefined, dockerStatusSchema),
+  setEnabled: (enabled: boolean) => api.put('/docker/settings', { enabled }, dockerStatusSchema),
 };
 
 export const backupsApi = {

@@ -13,6 +13,8 @@ import { AuthService } from './services/auth.js';
 import { CloudflareService } from './services/cloudflare.js';
 import { ConfigService } from './services/config-io.js';
 import { BackupService } from './backup/service.js';
+import { DockerClient, type DockerApi } from './docker/client.js';
+import { defaultSelfHostname, DockerDiscoveryService } from './docker/discovery.js';
 import { DriftService } from './services/drift.js';
 import { HealthService } from './services/health.js';
 import { HostService } from './services/hosts.js';
@@ -48,6 +50,7 @@ export interface AppContext {
   configIo: ConfigService;
   drift: DriftService;
   backups: BackupService;
+  docker: DockerDiscoveryService;
   lifecycle: Lifecycle;
 }
 
@@ -57,6 +60,9 @@ export interface ContextOverrides {
   cloudflareRetryBaseMs?: number;
   supervisor?: Partial<Pick<SupervisorOptions, 'env' | 'backoff' | 'killTimeoutMs'>>;
   healthTimeoutMs?: number;
+  /** Fake Docker API for discovery tests. */
+  docker?: DockerApi;
+  dockerSelfHostname?: string;
 }
 
 /** Version from package.json (works from both `src/` and `dist/`). */
@@ -163,6 +169,18 @@ export function createContext(
       logger: logger.child({ component: 'backup' }),
       fetch: overrides.fetch,
     }),
+    docker: new DockerDiscoveryService({
+      db,
+      settings,
+      hosts,
+      tunnels,
+      client: overrides.docker ?? new DockerClient(config.dockerHost),
+      endpoint: config.dockerHost,
+      intervalSeconds: config.dockerScanIntervalSeconds,
+      logger: logger.child({ component: 'docker' }),
+      selfHostname: overrides.dockerSelfHostname ?? defaultSelfHostname(),
+      isCloudflareConfigured: () => cloudflare.isConfigured(),
+    }),
   } as Omit<AppContext, 'lifecycle'> as AppContext;
   ctx.lifecycle = new Lifecycle(ctx);
   return ctx;
@@ -208,6 +226,9 @@ export class Lifecycle {
     if (ctx.config.reconcileIntervalSeconds > 0) {
       this.every(ctx.config.reconcileIntervalSeconds, () => this.checkDrift());
     }
+    // Docker discovery (does nothing while turned off).
+    this.every(ctx.config.dockerScanIntervalSeconds, () => ctx.docker.scan());
+    void ctx.docker.scan();
     // Backups: check every 5 minutes whether one is due (the schedule is in hours).
     this.every(300, () => ctx.backups.runIfDue());
     if (ctx.config.healthcheckIntervalSeconds > 0) {

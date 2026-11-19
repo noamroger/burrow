@@ -22,6 +22,8 @@ export function makeHost(overrides: Partial<ProxyHost> = {}): ProxyHost {
     options: { noTLSVerify: false, httpHostHeader: '', originServerName: '', extra: {} },
     access: { enabled: false, emails: [], emailDomains: [], sessionDuration: '24h' },
     template: null,
+    source: 'manual',
+    sourceRef: null,
     sync: { status: 'synced', error: null, lastSyncedAt: '2026-11-18T10:00:00.000Z' },
     health: {
       state: 'up',

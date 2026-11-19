@@ -22,6 +22,7 @@ import {
   tokensApi,
   configApi,
   driftApi,
+  dockerApi,
   backupsApi,
   zonesApi,
 } from './endpoints';
@@ -42,6 +43,7 @@ export const queryKeys = {
   tokens: ['tokens'] as const,
   drift: ['drift'] as const,
   backups: ['backups'] as const,
+  docker: ['docker'] as const,
 };
 
 /** Polling intervals (ms). */
@@ -274,6 +276,31 @@ export function useDriftSettings() {
     mutationFn: driftApi.settings,
     onSuccess: (report) => qc.setQueryData(queryKeys.drift, report),
   });
+}
+
+/* ------------------------------- docker ------------------------------- */
+
+export function useDocker() {
+  return useQuery({ queryKey: queryKeys.docker, queryFn: dockerApi.get, refetchInterval: 30_000 });
+}
+
+function useDockerMutation<T>(fn: (arg: T) => ReturnType<typeof dockerApi.get>) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: (status) => {
+      qc.setQueryData(queryKeys.docker, status);
+      void qc.invalidateQueries({ queryKey: queryKeys.hosts });
+    },
+  });
+}
+
+export function useDockerScan() {
+  return useDockerMutation<void>(() => dockerApi.scan());
+}
+
+export function useDockerSettings() {
+  return useDockerMutation<boolean>(dockerApi.setEnabled);
 }
 
 /* ------------------------------- backups ------------------------------ */

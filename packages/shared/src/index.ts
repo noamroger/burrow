@@ -452,6 +452,10 @@ export const originHealthSchema = z.object({
 });
 export type OriginHealth = z.infer<typeof originHealthSchema>;
 
+export const HOST_SOURCES = ['manual', 'docker'] as const;
+export const hostSourceSchema = z.enum(HOST_SOURCES);
+export type HostSource = z.infer<typeof hostSourceSchema>;
+
 export const proxyHostSchema = z.object({
   id: z.number().int(),
   subdomain: z.string(),
@@ -474,6 +478,13 @@ export const proxyHostSchema = z.object({
   access: accessSettingsSchema,
   /** Service template the host was made from, or null. */
   template: z.string().nullable(),
+  /**
+   * Where the host comes from: `manual` (UI, API, import) or `docker`
+   * (container labels; edit the labels, not the host).
+   */
+  source: hostSourceSchema,
+  /** For `docker`: the container name. */
+  sourceRef: z.string().nullable(),
   sync: z.object({
     status: syncStatusSchema,
     error: z.string().nullable(),
@@ -712,6 +723,49 @@ export const createdApiTokenSchema = apiTokenSchema.extend({
   token: z.string(),
 });
 export type CreatedApiToken = z.infer<typeof createdApiTokenSchema>;
+
+/* ------------------------------------------------------------------ */
+/* Docker auto-discovery                                               */
+/* ------------------------------------------------------------------ */
+
+export const DOCKER_CONTAINER_STATUSES = ['published', 'pending', 'error', 'ignored'] as const;
+
+/** A container with `burrow.*` labels, as seen by the last scan. */
+export const dockerContainerSchema = z.object({
+  /** Short container id. */
+  id: z.string(),
+  name: z.string(),
+  image: z.string(),
+  /** Docker state: running, exited… */
+  state: z.string(),
+  hostname: z.string().nullable(),
+  path: z.string(),
+  service: z.string().nullable(),
+  /** `published` (host in sync), `pending`, `error` (see message) or `ignored` (burrow.enable=false). */
+  status: z.enum(DOCKER_CONTAINER_STATUSES),
+  message: z.string().nullable(),
+  hostId: z.number().int().nullable(),
+});
+export type DockerContainerInfo = z.infer<typeof dockerContainerSchema>;
+
+/** GET /api/docker -> 200 */
+export const dockerStatusSchema = z.object({
+  /** Discovery is off by default. */
+  enabled: z.boolean(),
+  /** DOCKER_HOST Burrow reads from, e.g. `unix:///var/run/docker.sock`. */
+  endpoint: z.string(),
+  /** Whether the last scan could reach Docker (null before the first scan). */
+  reachable: z.boolean().nullable(),
+  error: z.string().nullable(),
+  lastScanAt: z.string().nullable(),
+  intervalSeconds: z.number().int(),
+  containers: z.array(dockerContainerSchema),
+});
+export type DockerStatus = z.infer<typeof dockerStatusSchema>;
+
+/** PUT /api/docker/settings -> 200 DockerStatus. POST /api/docker/scan -> 200 DockerStatus. */
+export const dockerSettingsSchema = z.object({ enabled: z.boolean() });
+export type DockerSettingsInput = z.infer<typeof dockerSettingsSchema>;
 
 /* ------------------------------------------------------------------ */
 /* Configuration export / import                                       */

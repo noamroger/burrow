@@ -214,6 +214,30 @@ export const en = {
   'host.path': 'Path',
   'host.pathHint': 'A regular expression such as ^/api. Leave empty to match every path.',
   'host.advanced': 'Advanced options',
+  'docker.title': 'Docker discovery',
+  'docker.description':
+    'Containers with a burrow.host label are published automatically, and unpublished when they are removed.',
+  'docker.enable': 'Discover containers',
+  'docker.enableHint':
+    'Reads {endpoint} (read-only). Mount the Docker socket or point DOCKER_HOST at a socket proxy.',
+  'docker.unreachable': 'Cannot read Docker',
+  'docker.none': 'No container has a burrow.host label yet.',
+  'docker.fromContainer': 'from {name}',
+  'docker.status.published': 'Published',
+  'docker.status.pending': 'Pending',
+  'docker.status.error': 'Error',
+  'docker.status.ignored': 'Ignored',
+  'docker.howTo': 'How to label a container',
+  'docker.howToBody':
+    'Burrow must share a Docker network with the container (or set burrow.address). Example:',
+  'docker.howToLabels':
+    'Other labels: burrow.port, burrow.scheme, burrow.service, burrow.address, burrow.path, burrow.tunnel, burrow.no-tls-verify, burrow.http-host-header, burrow.access.session, burrow.enable. See the README for details.',
+  'docker.lastScan': 'Last scan {when}, every {seconds}s.',
+  'docker.neverScanned': 'Not scanned yet.',
+  'docker.scanNow': 'Scan now',
+  'hosts.fromDocker': 'Docker: {name}',
+  'hosts.managedByDocker':
+    'Managed by the labels of the container {name}. Change the labels to edit or remove it.',
   'host.template.label': 'Start from a template',
   'host.template.none': 'No template',
   'host.template.notesTitle': 'Tips for {name}',

@@ -26,6 +26,7 @@ import { SyncBadge } from '../components/SyncBadge';
 import { SyncResultPanel } from '../components/SyncResultPanel';
 import { TunnelStatusBadge } from '../components/TunnelStatusBadge';
 import { Alert } from '../components/ui/Alert';
+import { Badge } from '../components/ui/Badge';
 import { Button, IconButton } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
@@ -381,6 +382,11 @@ function HostnameLink({ host }: { host: ProxyHost }) {
           {t('hosts.pathLabel')} {host.path}
         </p>
       ) : null}
+      {host.source === 'docker' ? (
+        <p className="mt-1" title={t('hosts.managedByDocker', { name: host.sourceRef ?? '?' })}>
+          <Badge tone="info">{t('hosts.fromDocker', { name: host.sourceRef ?? '?' })}</Badge>
+        </p>
+      ) : null}
       {several && host.tunnelName ? (
         <p className="mt-0.5 truncate text-xs text-fg-muted">
           {t('hosts.viaTunnel', { name: host.tunnelName })}
@@ -396,7 +402,7 @@ function EnabledSwitch({ host }: { host: ProxyHost }) {
   return (
     <Switch
       checked={save.isPending ? !host.enabled : host.enabled}
-      disabled={save.isPending}
+      disabled={save.isPending || host.source === 'docker'}
       label={t(host.enabled ? 'hosts.disable' : 'hosts.enable', { hostname: host.hostname })}
       onChange={(enabled) =>
         save.mutate(
@@ -434,19 +440,23 @@ function RowActions({ host, onEdit, onDelete }: Omit<RowProps, 'now'>) {
           })
         }
       />
-      <IconButton
-        icon="pencil"
-        size="sm"
-        label={t('hosts.edit', { hostname: host.hostname })}
-        onClick={() => onEdit(host)}
-      />
-      <IconButton
-        icon="trash"
-        size="sm"
-        label={t('hosts.delete', { hostname: host.hostname })}
-        onClick={() => onDelete(host)}
-        className="hover:text-danger"
-      />
+      {host.source === 'docker' ? null : (
+        <>
+          <IconButton
+            icon="pencil"
+            size="sm"
+            label={t('hosts.edit', { hostname: host.hostname })}
+            onClick={() => onEdit(host)}
+          />
+          <IconButton
+            icon="trash"
+            size="sm"
+            label={t('hosts.delete', { hostname: host.hostname })}
+            onClick={() => onDelete(host)}
+            className="hover:text-danger"
+          />
+        </>
+      )}
     </div>
   );
 }

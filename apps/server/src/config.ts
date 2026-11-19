@@ -41,6 +41,9 @@ const configSchema = z.object({
   /** Where local backups are written. Default: `<DATA_DIR>/backups`. */
   BACKUP_DIR: z.string().optional(),
   WEB_DIST_DIR: z.string().min(1).default(resolve(here, '../../web/dist')),
+  /** Docker API used by auto-discovery (unix socket or tcp:// socket proxy). */
+  DOCKER_HOST: z.string().min(1).default('unix:///var/run/docker.sock'),
+  DOCKER_SCAN_INTERVAL_SECONDS: z.coerce.number().int().min(5).default(30),
   /** Address cloudflared exposes its metrics and `/ready` endpoint on. */
   CLOUDFLARED_METRICS: z.string().min(1).default('127.0.0.1:20241'),
   NODE_ENV: z.string().default('production'),
@@ -64,6 +67,8 @@ export interface Config {
   reconcileIntervalSeconds: number;
   healthcheckIntervalSeconds: number;
   backupDir: string;
+  dockerHost: string;
+  dockerScanIntervalSeconds: number;
   webDistDir: string;
   isProduction: boolean;
 }
@@ -93,6 +98,8 @@ export function loadConfig(env: NodeJS.ProcessEnv | ConfigInput = process.env): 
     reconcileIntervalSeconds: c.RECONCILE_INTERVAL_SECONDS,
     healthcheckIntervalSeconds: c.HEALTHCHECK_INTERVAL_SECONDS,
     backupDir: resolve(c.BACKUP_DIR || join(c.DATA_DIR, 'backups')),
+    dockerHost: c.DOCKER_HOST,
+    dockerScanIntervalSeconds: c.DOCKER_SCAN_INTERVAL_SECONDS,
     webDistDir: resolve(c.WEB_DIST_DIR),
     isProduction: c.NODE_ENV === 'production',
   };

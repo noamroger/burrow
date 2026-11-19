@@ -34,6 +34,7 @@ import { PasswordStrength } from '../components/PasswordStrength';
 import { ApiTokensCard } from '../components/settings/ApiTokensCard';
 import { BackupsCard } from '../components/settings/BackupsCard';
 import { ConfigCard } from '../components/settings/ConfigCard';
+import { DockerCard } from '../components/settings/DockerCard';
 import { DriftCard } from '../components/settings/DriftCard';
 
 export function SettingsPage() {
@@ -48,6 +49,7 @@ export function SettingsPage() {
             <ZoneList />
           </CardBody>
         </Card>
+        <DockerCard />
         <DriftCard />
         <ConfigCard />
         <BackupsCard />
