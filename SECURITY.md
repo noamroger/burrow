@@ -59,3 +59,6 @@ daemon or the `/data` volume.
   (`read_only`, `cap_drop: ALL`, `no-new-privileges`).
 - Set `BURROW_SECRET` if your backups of `/data` are stored somewhere less
   trusted than the host.
+- Turn on two-step verification (Settings › Two-step verification) and keep
+  the recovery codes offline. Check the Activity page for changes you did not
+  make.

@@ -91,6 +91,14 @@ When you remove the service, Burrow removes the route and the DNS record.
 - **Export, import and REST API**: move your configuration to another server
   as one JSON file, and script everything with API tokens and the built-in
   OpenAPI documentation at `/api/docs` (see [docs/api.md](docs/api.md)).
+- **Two-step verification** (optional, recommended): an authenticator app
+  (TOTP) and/or passkeys, with one-time recovery codes. Passkeys can also
+  sign you in without a password.
+- **Activity log with undo**: who changed what and when (admin, API token,
+  Docker discovery), from which IP, with the fields that changed. Undo a
+  host edit, deletion or a setting in one click; Cloudflare follows.
+- **Locked out?** `docker exec -it burrow burrow-reset-password` sets a new
+  password, and can turn off two-step verification for a lost phone.
 - **Secure by default**: argon2id passwords, encrypted API token, CSRF
   protection, login rate limiting, non-root container.
 
@@ -412,6 +420,91 @@ without exposing the admin UI, add a host with that hostname and the service
 **Public hostname**. Requests for it only reach the homepage, its icons and
 the status badges; every other page and API route answers 404 there.
 
+## Two-step verification
+
+Burrow decides what your homelab exposes to the internet, so its admin
+account deserves more than a password. **Settings › Two-step verification**
+offers two methods. Both are optional (Burrow only suggests them) and you can
+use one, the other, or both:
+
+- **Authenticator app**: scan the QR code with Aegis, Google Authenticator,
+  1Password, Bitwarden or any TOTP app, then type the 6-digit code it shows.
+  From then on, Burrow asks for a code after the password.
+- **Passkeys**: your fingerprint, face, device PIN or a security key
+  (YubiKey…). A passkey works as the second step, or on its own with
+  **Sign in with a passkey** on the login page.
+
+When you turn on the first method, Burrow shows **10 recovery codes**. Each
+one signs you in once if you lose your phone or key: download or print them
+and keep them somewhere safe. **New codes** replaces them. Turning a method
+off, removing a passkey or making new codes asks for your password again.
+
+> **Passkeys need HTTPS.** Browsers only allow them on `https://` addresses
+> (or `http://localhost`). A passkey is tied to the address you created it
+> on: one made on `https://burrow.example.com` does not work on
+> `http://192.168.1.10:8080`. The authenticator app works everywhere.
+
+API tokens are not affected: scripts keep working with their token, and a
+token can never change the two-step settings.
+
+## Forgot your password?
+
+Run the reset script inside the container (`burrow` is the container name
+from the example `docker-compose.yml`):
+
+```bash
+docker exec -it burrow burrow-reset-password
+```
+
+It asks for a new password (twice, hidden), signs out every session and
+writes the reset to the activity log. If two-step verification is on, it
+asks whether to turn it off too, for when the phone or the passkey is lost.
+
+Options, for scripts or terminals without `-it`:
+
+| Option             | What it does                                                        |
+| ------------------ | ------------------------------------------------------------------- |
+| `--generate`       | Generate a strong password and print it                             |
+| `--password-stdin` | Read the new password from standard input                           |
+| `--disable-2fa`    | Also turn off two-step verification (app, passkeys, recovery codes) |
+| `--keep-2fa`       | Keep two-step verification without asking                           |
+
+```bash
+# Example: new random password, two-step verification removed
+docker exec burrow burrow-reset-password --generate --disable-2fa
+```
+
+Only someone who can already run `docker exec` on your server can do this,
+so it adds no new way in. Without Docker, run `node dist/cli/reset-password.js`
+from `apps/server` with the same `DATA_DIR`.
+
+## Activity log and undo
+
+The **Activity** page lists every change, newest first: who made it (your
+email, `API token "name"`, `Docker discovery` or `System` for automatic
+jobs), when, from which IP, and the fields that changed (click **Show the
+changes**). Filter by category, period or text (a hostname, an IP, an
+action), or show only what can still be undone.
+
+**Undo** puts things back the way they were, through the same code as the
+UI, so routes, DNS records and Access applications are updated on Cloudflare
+too. It works for:
+
+- hosts: creation (deletes the host), edits (restores the previous
+  settings) and deletion (publishes the host again);
+- maintenance mode on a host, and the default maintenance page;
+- zones enabled or disabled, a tunnel's "run cloudflared" switch and the
+  default tunnel;
+- Docker discovery, drift auto-repair and the homepage settings.
+
+An undo is itself logged, linked to the change it reversed, and can be
+undone in turn. Burrow refuses an undo when the same thing was changed
+again since (undo the newer change first), so it never overwrites recent
+work. Changes that involve secrets (Cloudflare and API tokens, notification
+URLs, S3 keys) or that cannot be reversed (a tunnel deleted on Cloudflare)
+are listed but not undoable. The log is also available from the API:
+`GET /api/audit` and `POST /api/audit/{id}/undo`.
+
 ## Configuration
 
 Everything is configured from the UI. These environment variables are all
@@ -606,6 +699,9 @@ browser-rendered SSH and VNC.
 badges, notifications (Discord, ntfy, webhook), per-host traffic statistics
 from Cloudflare Analytics, homepage dashboard (private or public).
 
+**v0.6**: optional two-step verification (authenticator app, passkeys,
+recovery codes), password reset with `docker exec`, activity log with undo.
+
 **Next:**
 
 - [x] Docker auto-discovery with labels (`burrow.host=app.example.com`,
@@ -624,6 +720,8 @@ from Cloudflare Analytics, homepage dashboard (private or public).
 - [x] Notifications (Discord, ntfy, webhook)
 - [x] Traffic statistics per host (Cloudflare Analytics)
 - [x] Homepage dashboard with icons
+- [x] Two-step verification (TOTP, passkeys) and a password reset script
+- [x] Activity log with undo
 - [ ] French translation
 
 Ideas and votes are welcome in the

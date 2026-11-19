@@ -26,7 +26,8 @@ curl -s -H "Authorization: Bearer $TOKEN" $BURROW/api/hosts
 
 Requests with a token do not need the CSRF header (browsers never attach an
 `Authorization` header on their own). A token acts as its owner but cannot
-create or revoke tokens, nor change the password. Other `Authorization`
+create or revoke tokens, change the password, nor change two-step
+verification. Two-step verification never applies to tokens. Other `Authorization`
 headers, such as the Basic auth of a reverse proxy in front of Burrow, are
 ignored, so they do not break the browser session.
 
@@ -114,6 +115,17 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'content-type: application/
   -d '{"name":"Phone","type":"ntfy","events":["host.down","host.up","tunnel.down"],"config":{"topic":"my-burrow-alerts"}}' \
   $BURROW/api/notifications/channels
 curl -s -X POST -H "Authorization: Bearer $TOKEN" $BURROW/api/notifications/channels/1/test
+```
+
+Every change made with a token appears in the activity log with the token's
+name. Read the log and undo a change:
+
+```bash
+# Last 20 host changes
+curl -s -H "Authorization: Bearer $TOKEN" "$BURROW/api/audit?category=host&limit=20"
+
+# Undo entry 42 (409 if it cannot be undone or changed again since)
+curl -s -X POST -H "Authorization: Bearer $TOKEN" $BURROW/api/audit/42/undo
 ```
 
 ## Configuration file
