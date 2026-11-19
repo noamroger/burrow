@@ -89,9 +89,12 @@ jobs:
 
       - name: Smoke test
         run: |
-          mkdir -p data && sudo chown 1000:1000 data
+          # A root-owned data dir, like the one Docker creates for a missing
+          # bind mount: the entrypoint must hand it over to uid 1000.
+          sudo mkdir -p data && sudo chown root:root data
           docker run -d --name burrow --read-only --tmpfs /tmp \
-            --cap-drop ALL --security-opt no-new-privileges \
+            --cap-drop ALL --cap-add CHOWN --cap-add SETUID --cap-add SETGID \
+            --security-opt no-new-privileges \
             -v "$PWD/data:/data" -p 8080:8080 burrow:ci
           for _ in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:8080/api/health; then
@@ -101,7 +104,10 @@ jobs:
             sleep 1
           done
           curl -fsS http://127.0.0.1:8080/api/health
-          test "$(docker exec burrow id -u)" = "1000"
+          test "$(stat -c '%u:%g' data)" = "1000:1000"
+          # Node must run unprivileged (tini, PID 1, is the only root process).
+          docker top burrow -o uid,args
+          test "$(docker top burrow -o uid,args | awk '$2 == "node" { print $1 }')" = "1000"
           docker exec burrow cloudflared --version
 
       - name: Container logs

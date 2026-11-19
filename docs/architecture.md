@@ -224,8 +224,11 @@ stopped ──start()──▶ starting ──first "Registered tunnel connectio
   (scoped to the chosen zones), `Account › Account Settings › Read`.
   `Account › Access: Apps and Policies › Edit` is optional and only needed
   for private hosts; the Access API is not called while no host is protected.
-- The container runs as uid 1000, with a read-only root filesystem possible
-  (only `/data` and `/tmp` are written).
+- The entrypoint starts as root only to give `/data` to `PUID:PGID`
+  (default 1000:1000) when its owner is wrong, then drops privileges with
+  `setpriv` (no capabilities left). Node and cloudflared never run as root.
+  Starting the container with `user:` skips this step. A read-only root
+  filesystem is supported (only `/data` and `/tmp` are written).
 
 ## 10. V2 hooks
 

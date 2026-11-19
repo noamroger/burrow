@@ -11,7 +11,8 @@
 #                on the build host, output is architecture independent)
 #   prod-deps    production-only node_modules for the TARGET architecture
 #                (native modules: better-sqlite3, @node-rs/argon2)
-#   runtime      small final image, non-root, tini as PID 1
+#   runtime      small final image, tini as PID 1; the entrypoint fixes /data
+#                ownership then drops to an unprivileged user (PUID/PGID)
 
 # Base image. Renovate keeps the tag (and adds a digest) up to date.
 # node:22-bookworm-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee (2026-11-18)
@@ -155,7 +156,12 @@ COPY --from=build --chown=root:root /src/apps/web/dist /app/web
 COPY --chmod=0755 docker/entrypoint.sh /usr/local/bin/burrow-entrypoint
 COPY --chmod=0755 docker/healthcheck.mjs /usr/local/bin/burrow-healthcheck.mjs
 
-USER 1000:1000
+# No USER here on purpose: the entrypoint starts as root only to give /data to
+# PUID:PGID (default 1000:1000) when Docker created it as root, then drops
+# privileges with setpriv. Node and cloudflared never run as root. Running the
+# container with `user:` / `--user` skips that step entirely.
+ENV PUID=1000 \
+    PGID=1000
 VOLUME ["/data"]
 EXPOSE 8080
 
