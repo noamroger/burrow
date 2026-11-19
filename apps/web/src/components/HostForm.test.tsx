@@ -53,9 +53,33 @@ describe('HostForm', () => {
       path: '',
       enabled: true,
       options: { noTLSVerify: false, httpHostHeader: '', originServerName: '' },
-      access: { enabled: false, emails: [], emailDomains: [], sessionDuration: '24h' },
+      access: {
+        enabled: false,
+        emails: [],
+        emailDomains: [],
+        sessionDuration: '24h',
+        browserRendering: null,
+      },
       template: null,
     });
+  });
+
+  it('sets up an SSH host with a browser terminal and shows the client command', async () => {
+    const { user, onSubmit } = setup();
+    await user.selectOptions(screen.getByLabelText(/Start from a template/), 'ssh');
+    expect(screen.getByLabelText('Service URL')).toHaveValue('ssh://192.168.1.10:22');
+    expect(screen.getByTestId('client-command')).toHaveTextContent(
+      'cloudflared access ssh --hostname %h',
+    );
+    expect(screen.getByLabelText('Open in the browser')).toHaveValue('ssh');
+    await user.type(screen.getByLabelText('Allowed emails'), 'me@example.com');
+    await user.click(screen.getByRole('button', { name: 'Create host' }));
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        service: 'ssh://192.168.1.10:22',
+        access: expect.objectContaining({ enabled: true, browserRendering: 'ssh' }),
+      }),
+    );
   });
 
   it('makes a temporary host that expires after the chosen duration', async () => {
@@ -118,6 +142,7 @@ describe('HostForm', () => {
           emails: ['me@example.com', 'Friend@Example.net'],
           emailDomains: ['@family.example'],
           sessionDuration: '168h',
+          browserRendering: null,
         },
       }),
     );
@@ -142,6 +167,7 @@ describe('HostForm', () => {
           emails: ['me@example.com'],
           emailDomains: [],
           sessionDuration: '6h',
+          browserRendering: null,
         },
       }),
     });
@@ -180,6 +206,7 @@ describe('accessChanged', () => {
     emails: ['me@example.com'],
     emailDomains: [],
     sessionDuration: '24h',
+    browserRendering: null,
   } as const;
   const priv = makeHost({ access: { ...on, emails: [...on.emails], emailDomains: [] } });
   const pub = makeHost();

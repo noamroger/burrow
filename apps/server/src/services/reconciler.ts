@@ -67,6 +67,7 @@ export function toAccessHost(row: ProxyHostRow): AccessHost {
     accessEmails: row.accessEmails,
     accessEmailDomains: row.accessEmailDomains,
     accessSessionDuration: row.accessSessionDuration,
+    browserRendering: row.accessBrowserRendering ?? null,
   };
 }
 

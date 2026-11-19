@@ -122,6 +122,8 @@ export const proxyHosts = sqliteTable(
       .notNull()
       .default(sql`'[]'`),
     accessSessionDuration: text('access_session_duration').notNull().default('24h'),
+    /** Browser-rendered terminal (`ssh`, `vnc`) for non-HTTP hosts; null = none. */
+    accessBrowserRendering: text('access_browser_rendering', { enum: ['ssh', 'vnc'] }),
     /** Service template the host was made from (`jellyfin`, `proxmox`…), for display. */
     template: text('template'),
     /** `docker` when the host is managed by container labels. */

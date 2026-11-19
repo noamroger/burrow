@@ -44,6 +44,8 @@ export const serviceTemplateSchema = z.object({
   websockets: z.boolean(),
   /** Admin panels that should sit behind Cloudflare Access. */
   recommendAccess: z.boolean(),
+  /** Browser-rendered terminal Cloudflare can show for this service (needs Access). */
+  browserRendering: z.enum(['ssh', 'vnc']).nullable(),
   /** Things to configure in the app itself, shown in the form. */
   notes: z.array(z.string()),
 });
@@ -53,7 +55,11 @@ export type ServiceTemplate = z.infer<typeof serviceTemplateSchema>;
 export const serviceTemplateListSchema = z.object({ templates: z.array(serviceTemplateSchema) });
 export type ServiceTemplateList = z.infer<typeof serviceTemplateListSchema>;
 
-type TemplateDef = Omit<ServiceTemplate, 'options' | 'websockets' | 'recommendAccess' | 'notes'> & {
+type TemplateDef = Omit<
+  ServiceTemplate,
+  'options' | 'websockets' | 'recommendAccess' | 'notes' | 'browserRendering'
+> & {
+  browserRendering?: 'ssh' | 'vnc' | null;
   options?: Partial<ServiceTemplate['options']>;
   websockets?: boolean;
   recommendAccess?: boolean;
@@ -71,6 +77,7 @@ function define(def: TemplateDef): ServiceTemplate {
     },
     websockets: def.websockets ?? false,
     recommendAccess: def.recommendAccess ?? false,
+    browserRendering: def.browserRendering ?? null,
     notes: def.notes ?? [],
   };
 }
@@ -389,6 +396,50 @@ export const SERVICE_TEMPLATES: readonly ServiceTemplate[] = [
     subdomain: 'code',
     websockets: true,
     recommendAccess: true,
+  }),
+  /* ---- remote access ---- */
+  define({
+    id: 'ssh',
+    name: 'SSH server',
+    category: 'remote',
+    description: 'Shell access: a terminal in the browser, or ssh with cloudflared on the client.',
+    scheme: 'ssh',
+    port: 22,
+    container: '192.168.1.10',
+    subdomain: 'ssh',
+    recommendAccess: true,
+    browserRendering: 'ssh',
+    notes: [
+      'In the browser terminal, the part of the Access email before the @ must be a user on the server.',
+      'The server must accept the curve25519-sha256 or ecdh-sha2-nistp256 key exchange (default on recent OpenSSH).',
+    ],
+  }),
+  define({
+    id: 'vnc',
+    name: 'VNC desktop',
+    category: 'remote',
+    description: 'Remote desktop over VNC, rendered in the browser by Cloudflare.',
+    scheme: 'tcp',
+    port: 5900,
+    container: '192.168.1.11',
+    subdomain: 'vnc',
+    recommendAccess: true,
+    browserRendering: 'vnc',
+  }),
+  define({
+    id: 'rdp',
+    name: 'Windows Remote Desktop',
+    category: 'remote',
+    description: 'Remote Desktop through cloudflared on the client.',
+    scheme: 'rdp',
+    port: 3389,
+    container: '192.168.1.12',
+    subdomain: 'rdp',
+    recommendAccess: true,
+    notes: [
+      'Users run "cloudflared access rdp" on their computer, then connect their RDP client to localhost:3389 (the command is shown on the host).',
+      "Cloudflare's browser-based RDP needs a private network route and an Access target, which Burrow does not set up.",
+    ],
   }),
 ];
 

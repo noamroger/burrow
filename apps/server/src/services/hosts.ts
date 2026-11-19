@@ -95,6 +95,7 @@ export class HostService {
         emails: row.accessEmails,
         emailDomains: row.accessEmailDomains,
         sessionDuration: toSessionDuration(row.accessSessionDuration),
+        browserRendering: row.accessBrowserRendering ?? null,
       },
       template: row.template,
       source: row.source,
@@ -213,6 +214,7 @@ export class HostService {
       accessEmails: [...new Set(input.access.emails)],
       accessEmailDomains: [...new Set(input.access.emailDomains)],
       accessSessionDuration: input.access.sessionDuration,
+      accessBrowserRendering: input.access.browserRendering,
       template: input.template,
       ...(input.expiresAt !== undefined ? { expiresAt: expiry(input.expiresAt) } : {}),
     };

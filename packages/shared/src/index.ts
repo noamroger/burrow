@@ -351,6 +351,45 @@ export const ACCESS_SESSION_DURATIONS = ['30m', '6h', '12h', '24h', '168h', '720
 export const accessSessionDurationSchema = z.enum(ACCESS_SESSION_DURATIONS);
 export type AccessSessionDuration = z.infer<typeof accessSessionDurationSchema>;
 
+/**
+ * Browser-rendered terminals Burrow can set up (an Access application of type
+ * `ssh` or `vnc`). Browser RDP needs a private network route and an Access
+ * target instead, so RDP hosts use `cloudflared access rdp` on the client.
+ */
+export const BROWSER_RENDERINGS = ['ssh', 'vnc'] as const;
+export const browserRenderingSchema = z.enum(BROWSER_RENDERINGS).nullable();
+export type BrowserRendering = z.infer<typeof browserRenderingSchema>;
+
+/** Protocol of a service URL: `http`, `https`, `ssh`, `rdp`, `tcp`, `smb`, `unix`… */
+export function serviceProtocol(service: string): string {
+  return /^([a-z+]+):\/\//i.exec(service.trim())?.[1]?.toLowerCase() ?? '';
+}
+
+/** True for services visitors cannot open in a browser without help (SSH, RDP, raw TCP…). */
+export function isNonHttpService(service: string): boolean {
+  return ['ssh', 'rdp', 'tcp', 'smb'].includes(serviceProtocol(service));
+}
+
+/**
+ * Command a user runs on their own machine to reach a non-HTTP host through
+ * Cloudflare (`cloudflared` must be installed there). Null for HTTP services.
+ */
+export function clientCommand(hostname: string, service: string): string | null {
+  const port = /:(\d+)\/?$/.exec(service.trim())?.[1];
+  switch (serviceProtocol(service)) {
+    case 'ssh':
+      return `ssh -o ProxyCommand="cloudflared access ssh --hostname %h" user@${hostname}`;
+    case 'rdp':
+      return `cloudflared access rdp --hostname ${hostname} --url rdp://localhost:3389`;
+    case 'smb':
+      return `cloudflared access smb --hostname ${hostname} --url localhost:8445`;
+    case 'tcp':
+      return `cloudflared access tcp --hostname ${hostname} --url localhost:${port ?? '9000'}`;
+    default:
+      return null;
+  }
+}
+
 /** Maximum number of emails + email domains on one host. */
 export const ACCESS_MAX_RULES = 50;
 
@@ -383,8 +422,21 @@ export const accessSettingsInputSchema = z
     emails: z.array(accessEmailSchema).optional().default([]),
     emailDomains: z.array(accessEmailDomainSchema).optional().default([]),
     sessionDuration: accessSessionDurationSchema.optional().default('24h'),
+    /**
+     * Browser-rendered terminal: Cloudflare shows an SSH terminal or a VNC
+     * desktop in the browser at https://<hostname>, after the Access login.
+     * Needs an `ssh://` or `tcp://` service and no path.
+     */
+    browserRendering: browserRenderingSchema.optional().default(null),
   })
   .superRefine((value, ctx) => {
+    if (value.browserRendering && !value.enabled) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['browserRendering'],
+        message: 'Browser rendering needs Cloudflare Access protection',
+      });
+    }
     const total = value.emails.length + value.emailDomains.length;
     if (value.enabled && total === 0) {
       ctx.addIssue({
@@ -408,36 +460,61 @@ export const accessSettingsSchema = z.object({
   emails: z.array(z.string()),
   emailDomains: z.array(z.string()),
   sessionDuration: accessSessionDurationSchema,
+  browserRendering: browserRenderingSchema,
 });
 export type AccessSettings = z.infer<typeof accessSettingsSchema>;
 
-export const proxyHostInputSchema = z.object({
-  subdomain: subdomainSchema,
-  /** Tunnel to publish through (Burrow id). Defaults to the default tunnel; kept on update when omitted. */
-  tunnelId: z.number().int().positive().optional(),
-  zoneId: z.string().regex(/^[a-f0-9]{32}$/),
-  service: serviceUrlSchema,
-  path: ingressPathSchema.optional().default(''),
-  enabled: z.boolean().optional().default(true),
-  options: z
-    .object({
-      noTLSVerify: z.boolean().optional().default(false),
-      httpHostHeader: z.string().trim().max(255).optional().default(''),
-      originServerName: z.string().trim().max(255).optional().default(''),
-    })
-    .optional()
-    .default({}),
-  /** Cloudflare Access protection. Applies to the whole hostname (every path). */
-  access: accessSettingsInputSchema.optional().default({}),
-  /** Service template the host was made from (see GET /api/templates), or null. */
-  template: templateIdSchema.optional().default(null),
-  /**
-   * Temporary host: removed automatically (route, DNS record, Access app) at
-   * this time (ISO 8601, in the future). `null` = permanent. Omitted on update:
-   * unchanged.
-   */
-  expiresAt: z.string().datetime({ offset: true }).nullable().optional(),
-});
+export const proxyHostInputSchema = z
+  .object({
+    subdomain: subdomainSchema,
+    /** Tunnel to publish through (Burrow id). Defaults to the default tunnel; kept on update when omitted. */
+    tunnelId: z.number().int().positive().optional(),
+    zoneId: z.string().regex(/^[a-f0-9]{32}$/),
+    service: serviceUrlSchema,
+    path: ingressPathSchema.optional().default(''),
+    enabled: z.boolean().optional().default(true),
+    options: z
+      .object({
+        noTLSVerify: z.boolean().optional().default(false),
+        httpHostHeader: z.string().trim().max(255).optional().default(''),
+        originServerName: z.string().trim().max(255).optional().default(''),
+      })
+      .optional()
+      .default({}),
+    /** Cloudflare Access protection. Applies to the whole hostname (every path). */
+    access: accessSettingsInputSchema.optional().default({}),
+    /** Service template the host was made from (see GET /api/templates), or null. */
+    template: templateIdSchema.optional().default(null),
+    /**
+     * Temporary host: removed automatically (route, DNS record, Access app) at
+     * this time (ISO 8601, in the future). `null` = permanent. Omitted on update:
+     * unchanged.
+     */
+    expiresAt: z.string().datetime({ offset: true }).nullable().optional(),
+  })
+  .superRefine((host, ctx) => {
+    const rendering = host.access.browserRendering;
+    if (!rendering) return;
+    const protocol = serviceProtocol(host.service);
+    const ok = rendering === 'ssh' ? ['ssh', 'tcp'].includes(protocol) : protocol === 'tcp';
+    if (!ok) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['access', 'browserRendering'],
+        message:
+          rendering === 'ssh'
+            ? 'A browser SSH terminal needs an ssh:// service, e.g. ssh://192.168.1.10:22'
+            : 'A browser VNC desktop needs a tcp:// service, e.g. tcp://192.168.1.10:5900',
+      });
+    }
+    if (host.path) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['path'],
+        message: 'Browser rendering works on a whole hostname: leave the path empty',
+      });
+    }
+  });
 /** POST /api/hosts body. PUT /api/hosts/:id body (full replace). */
 export type ProxyHostInput = z.input<typeof proxyHostInputSchema>;
 export type ProxyHostParsedInput = z.output<typeof proxyHostInputSchema>;

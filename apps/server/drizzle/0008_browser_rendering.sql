@@ -1,0 +1,1 @@
+ALTER TABLE `proxy_hosts` ADD `access_browser_rendering` text;

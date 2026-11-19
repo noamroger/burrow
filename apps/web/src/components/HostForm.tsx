@@ -9,7 +9,10 @@ import { useId, useMemo, useState, type FormEvent } from 'react';
 import {
   ACCESS_SESSION_DURATIONS,
   buildHostname,
+  clientCommand,
   findTemplate,
+  isNonHttpService,
+  serviceProtocol,
   proxyHostInputSchema,
   SERVICE_TEMPLATES,
   TEMPLATE_CATEGORIES,
@@ -49,6 +52,8 @@ export interface HostFormValues {
   accessEmails: string;
   accessEmailDomains: string;
   accessSessionDuration: AccessSessionDuration;
+  /** Browser-rendered terminal for SSH / VNC hosts; '' for none. */
+  browserRendering: '' | 'ssh' | 'vnc';
   /** Template id, '' for none. */
   template: string;
   /**
@@ -88,6 +93,7 @@ export function initialValues(host: ProxyHost | undefined, zones: Zone[]): HostF
       accessEmails: host.access.emails.join('\n'),
       accessEmailDomains: host.access.emailDomains.join('\n'),
       accessSessionDuration: host.access.sessionDuration,
+      browserRendering: host.access.browserRendering ?? '',
       template: host.template ?? '',
       expiresIn: '',
     };
@@ -106,6 +112,7 @@ export function initialValues(host: ProxyHost | undefined, zones: Zone[]): HostF
     accessEmails: '',
     accessEmailDomains: '',
     accessSessionDuration: '24h',
+    browserRendering: '',
     template: '',
     expiresIn: '',
   };
@@ -126,6 +133,8 @@ export function applyTemplate(values: HostFormValues, template: ServiceTemplate)
     noTLSVerify: template.options.noTLSVerify,
     httpHostHeader: template.options.httpHostHeader,
     originServerName: template.options.originServerName,
+    browserRendering: template.browserRendering ?? '',
+    accessEnabled: template.browserRendering ? true : values.accessEnabled,
   };
 }
 
@@ -147,6 +156,8 @@ export function toInput(values: HostFormValues): ProxyHostInput {
       emails: splitList(values.accessEmails),
       emailDomains: splitList(values.accessEmailDomains),
       sessionDuration: values.accessSessionDuration,
+      browserRendering:
+        values.accessEnabled && values.browserRendering ? values.browserRendering : null,
     },
     template: values.template || null,
     ...(values.expiresIn === 'never'
@@ -369,6 +380,10 @@ export function HostForm({ host, zones, tunnels = [], onSubmit, onCancel }: Host
         />
       </Field>
 
+      {isNonHttpService(values.service) ? (
+        <NonHttpHelp hostname={fqdn || 'host.example.com'} service={values.service} />
+      ) : null}
+
       {tunnels.length > 1 ? (
         <Field id={id('tunnel')} label={t('host.tunnel')} hint={t('host.tunnelHint')}>
           <Select
@@ -515,6 +530,30 @@ export function HostForm({ host, zones, tunnels = [], onSubmit, onCancel }: Host
                 ))}
               </Select>
             </Field>
+            {isNonHttpService(values.service) ? (
+              <Field
+                id={id('browserRendering')}
+                label={t('host.browser.label')}
+                hint={t('host.browser.hint')}
+                error={errors['access.browserRendering']}
+              >
+                <Select
+                  id={id('browserRendering')}
+                  value={values.browserRendering}
+                  onChange={(e) =>
+                    set('browserRendering', e.target.value as HostFormValues['browserRendering'])
+                  }
+                  aria-describedby={describedBy(id('browserRendering'), {
+                    hint: true,
+                    error: errors['access.browserRendering'],
+                  })}
+                >
+                  <option value="">{t('host.browser.off')}</option>
+                  <option value="ssh">{t('host.browser.ssh')}</option>
+                  <option value="vnc">{t('host.browser.vnc')}</option>
+                </Select>
+              </Field>
+            ) : null}
             <p className="text-xs leading-relaxed text-fg-muted">
               {t('host.access.wholeHostname', { hostname: fqdn || '…' })}
             </p>
@@ -676,6 +715,25 @@ function TemplateNotes({ template }: { template: ServiceTemplate }) {
           <li key={note}>{note}</li>
         ))}
       </ul>
+    </Alert>
+  );
+}
+
+function NonHttpHelp({ hostname, service }: { hostname: string; service: string }) {
+  const command = clientCommand(hostname, service);
+  const protocol = serviceProtocol(service).toUpperCase();
+  return (
+    <Alert tone="info" title={t('host.nonHttp.title', { protocol })}>
+      <p>{t('host.nonHttp.body')}</p>
+      {command ? (
+        <code
+          data-testid="client-command"
+          className="mt-2 block overflow-x-auto rounded bg-surface-2 px-2 py-1.5 font-mono text-[12px] whitespace-pre text-fg"
+        >
+          {command}
+        </code>
+      ) : null}
+      {protocol === 'RDP' ? <p className="mt-2">{t('host.nonHttp.rdp')}</p> : null}
     </Alert>
   );
 }

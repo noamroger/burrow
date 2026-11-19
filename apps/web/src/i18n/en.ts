@@ -214,6 +214,18 @@ export const en = {
   'host.path': 'Path',
   'host.pathHint': 'A regular expression such as ^/api. Leave empty to match every path.',
   'host.advanced': 'Advanced options',
+  'host.nonHttp.title': '{protocol} service',
+  'host.nonHttp.body':
+    'Browsers cannot open this directly. People connect with cloudflared installed on their computer, for example:',
+  'host.nonHttp.rdp':
+    "Then point the Remote Desktop client at localhost:3389. Cloudflare's in-browser RDP needs a private network route and is not set up by Burrow.",
+  'host.browser.label': 'Open in the browser',
+  'host.browser.hint':
+    'Cloudflare shows a terminal or a desktop at https://<hostname> after the Access login, no client needed.',
+  'host.browser.off': 'No (cloudflared on the client only)',
+  'host.browser.ssh': 'SSH terminal',
+  'host.browser.vnc': 'VNC desktop',
+  'hosts.inBrowser': 'in the browser',
   'hosts.inMaintenance': 'Maintenance',
   'hosts.maintenance': 'Maintenance mode for {hostname}',
   'maintenance.cardTitle': 'Maintenance page',

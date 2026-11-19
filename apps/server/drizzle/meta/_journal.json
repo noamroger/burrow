@@ -57,6 +57,13 @@
       "when": 1795066618375,
       "tag": "0007_maintenance",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1795066928178,
+      "tag": "0008_browser_rendering",
+      "breakpoints": true
     }
   ]
 }

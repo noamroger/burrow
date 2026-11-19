@@ -30,6 +30,8 @@ export interface AccessHost {
   accessEmails: string[];
   accessEmailDomains: string[];
   accessSessionDuration: string;
+  /** Browser-rendered terminal (`ssh`, `vnc`), or null for a regular web app. */
+  browserRendering?: 'ssh' | 'vnc' | null;
 }
 
 /** The protection wanted for one hostname (all its paths share it). */
@@ -38,6 +40,8 @@ export interface AccessDesired {
   emails: string[];
   emailDomains: string[];
   sessionDuration: string;
+  /** Application type: `self_hosted`, or `ssh` / `vnc` for a browser-rendered terminal. */
+  appType: 'self_hosted' | 'ssh' | 'vnc';
   hostIds: number[];
 }
 
@@ -119,10 +123,12 @@ export function desiredAccess(hosts: AccessHost[]): Map<string, AccessDesired> {
         emails: sorted(h.accessEmails),
         emailDomains: sorted(h.accessEmailDomains),
         sessionDuration: h.accessSessionDuration,
+        appType: h.browserRendering ?? 'self_hosted',
         hostIds: [h.id],
       });
       continue;
     }
+    if (h.browserRendering) prev.appType = h.browserRendering;
     prev.emails = sorted([...prev.emails, ...h.accessEmails]);
     prev.emailDomains = sorted([...prev.emailDomains, ...h.accessEmailDomains]);
     prev.sessionDuration = shorterDuration(prev.sessionDuration, h.accessSessionDuration);
@@ -149,7 +155,8 @@ export function desiredPolicy(d: AccessDesired): CfAccessPolicyInput {
 export function desiredApp(d: AccessDesired): Omit<CfAccessAppInput, 'policies'> {
   return {
     name: accessResourceName(d.hostname),
-    type: 'self_hosted',
+    // `ssh` / `vnc`: Cloudflare renders a terminal or desktop in the browser.
+    type: d.appType,
     domain: d.hostname,
     destinations: [{ type: 'public', uri: d.hostname }],
     session_duration: d.sessionDuration,

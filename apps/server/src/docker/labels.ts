@@ -17,6 +17,7 @@
  * | `burrow.origin-server-name`  | TLS server name expected from the origin                  |
  * | `burrow.access`              | Comma-separated emails and email domains: turns on Access |
  * | `burrow.access.session`      | Access session length (`30m`, `6h`, `24h`…)               |
+ * | `burrow.access.browser`      | `ssh` or `vnc`: terminal / desktop rendered in the browser |
  * | `burrow.enable`              | `false` to ignore the container                           |
  */
 import { findTemplate, type ServiceTemplate } from '@burrow/shared';
@@ -34,7 +35,13 @@ export interface LabelSpec {
   noTLSVerify: boolean;
   httpHostHeader: string;
   originServerName: string;
-  access: { enabled: boolean; emails: string[]; emailDomains: string[]; sessionDuration: string };
+  access: {
+    enabled: boolean;
+    emails: string[];
+    emailDomains: string[];
+    sessionDuration: string;
+    browserRendering: string | null;
+  };
 }
 
 export type LabelResult =
@@ -162,6 +169,10 @@ export function parseLabels(c: DockerContainer, selfNetworks: Set<string> | null
         emails: access.filter((x) => x.includes('@') && !x.startsWith('@')),
         emailDomains: access.filter((x) => !x.includes('@') || x.startsWith('@')),
         sessionDuration: get('access.session') ?? '24h',
+        browserRendering:
+          get('access.browser')?.toLowerCase() ||
+          (access.length > 0 ? template?.browserRendering : null) ||
+          null,
       },
     },
   };

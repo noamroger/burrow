@@ -4,7 +4,7 @@
  */
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
-import type { ProxyHost, SyncResult } from '@burrow/shared';
+import { isNonHttpService, serviceProtocol, type ProxyHost, type SyncResult } from '@burrow/shared';
 import {
   useCheckHost,
   useDeleteHost,
@@ -403,6 +403,14 @@ function HostnameLink({ host }: { host: ProxyHost }) {
       {host.path ? (
         <p className="mt-0.5 truncate font-mono text-xs text-fg-muted" title={t('hosts.pathTitle')}>
           {t('hosts.pathLabel')} {host.path}
+        </p>
+      ) : null}
+      {isNonHttpService(host.service) ? (
+        <p className="mt-1">
+          <Badge tone="accent">
+            {serviceProtocol(host.service).toUpperCase()}
+            {host.access.browserRendering ? ` · ${t('hosts.inBrowser')}` : ''}
+          </Badge>
         </p>
       ) : null}
       {host.maintenance.enabled ? (

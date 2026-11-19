@@ -69,6 +69,7 @@ function signature(i: {
   accessEmails: string[];
   accessEmailDomains: string[];
   accessSessionDuration: string;
+  accessBrowserRendering: string | null;
   template: string | null;
 }): string {
   return JSON.stringify([
@@ -83,6 +84,7 @@ function signature(i: {
     [...i.accessEmails].sort(),
     [...i.accessEmailDomains].sort(),
     i.accessEnabled ? i.accessSessionDuration : '',
+    i.accessBrowserRendering ?? null,
     i.template,
   ]);
 }
@@ -101,6 +103,7 @@ function inputSignature(d: Desired, row?: ProxyHostRow): string {
     accessEmails: d.input.access.emails,
     accessEmailDomains: d.input.access.emailDomains,
     accessSessionDuration: d.input.access.sessionDuration,
+    accessBrowserRendering: d.input.access.browserRendering,
     template: d.input.template,
   });
 }

@@ -44,6 +44,7 @@ type HostValues = Pick<
   | 'accessEmails'
   | 'accessEmailDomains'
   | 'accessSessionDuration'
+  | 'accessBrowserRendering'
   | 'template'
 >;
 
@@ -131,6 +132,7 @@ export class ConfigService {
               sessionDuration: accessSessionDurationSchema
                 .catch('24h')
                 .parse(h.accessSessionDuration),
+              browserRendering: h.accessBrowserRendering ?? null,
             },
             template: h.template,
           };
@@ -269,6 +271,7 @@ export class ConfigService {
         accessEmails: [...new Set(h.access.emails)],
         accessEmailDomains: [...new Set(h.access.emailDomains)],
         accessSessionDuration: h.access.sessionDuration,
+        accessBrowserRendering: h.access.browserRendering,
         template: findTemplate(h.template)?.id ?? null,
       };
       const before = existing.get(key);
