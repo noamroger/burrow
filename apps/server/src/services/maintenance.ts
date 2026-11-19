@@ -28,7 +28,7 @@ import { proxyHosts } from '../db/schema.js';
 import type { SettingsRepository } from '../db/settings.js';
 import { errorMessage } from '../lib/errors.js';
 import { nowIso } from '../lib/time.js';
-import type { AuditService } from './audit.js';
+import { diff, type ActorLike, type AuditService } from './audit.js';
 import type { CloudflareService } from './cloudflare.js';
 import type { HostService } from './hosts.js';
 import type { Reconciler } from './reconciler.js';
@@ -75,15 +75,22 @@ export class MaintenanceService {
     return parsed.success ? parsed.data : DEFAULT_MAINTENANCE_PAGE;
   }
 
-  saveDefaultPage(input: unknown, userId: number | null): MaintenancePage {
+  saveDefaultPage(input: unknown, by: ActorLike): MaintenancePage {
+    const before = this.defaultPage();
     const page = maintenancePageSchema.parse(input);
     this.opts.settings.set(MAINTENANCE_PAGE_KEY, page);
-    this.opts.audit.record(userId, 'maintenance.page');
+    const changes = diff(before, page);
+    if (changes.length > 0) {
+      this.opts.audit.record(by, 'maintenance.page', null, {
+        details: { changes },
+        undo: { kind: 'maintenance.page', page: before, expect: page },
+      });
+    }
     return page;
   }
 
   /** Turn maintenance on or off for a host (also allowed on Docker hosts). */
-  async setHost(id: number, raw: HostMaintenanceInput, userId: number | null): Promise<ProxyHost> {
+  async setHost(id: number, raw: HostMaintenanceInput, by: ActorLike): Promise<ProxyHost> {
     const input = hostMaintenanceInputSchema.parse(raw);
     const row = this.opts.hosts.getRow(id);
     this.opts.db
@@ -98,9 +105,21 @@ export class MaintenanceService {
       .where(eq(proxyHosts.id, id))
       .run();
     this.opts.audit.record(
-      userId,
+      by,
       input.enabled ? 'host.maintenance.on' : 'host.maintenance.off',
       row.hostname + row.path,
+      {
+        undo: {
+          kind: 'host.maintenance',
+          hostId: id,
+          input: {
+            enabled: row.maintenanceEnabled,
+            until: row.maintenanceUntil,
+            page: row.maintenancePage ?? null,
+          },
+          expect: input.enabled,
+        },
+      },
     );
     if (row.maintenanceEnabled !== input.enabled && this.opts.cloudflare.isConfigured()) {
       const outcome = await this.opts.reconciler.sync({

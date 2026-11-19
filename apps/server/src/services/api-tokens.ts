@@ -89,6 +89,7 @@ export class ApiTokenService {
     return {
       user: row.user,
       via: 'token',
+      tokenName: row.token.name,
       session: {
         id: `token:${row.token.id}`,
         userId: row.user.id,

@@ -2,7 +2,7 @@ import { homepageSettingsSchema, type HomeData, type HomepageSettings } from '@b
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
-import { userId } from '../http/session.js';
+import { actor } from '../http/session.js';
 import { AppError } from '../lib/errors.js';
 
 const idParams = z.object({ id: z.coerce.number().int().positive() });
@@ -18,7 +18,7 @@ export async function homepageSettingsRoutes(app: FastifyInstance, ctx: AppConte
     '/api/homepage/settings',
     { bodyLimit: SETTINGS_BODY_LIMIT },
     async (req): Promise<HomepageSettings> =>
-      ctx.homepage.saveSettings(homepageSettingsSchema.parse(req.body), userId(req)),
+      ctx.homepage.saveSettings(homepageSettingsSchema.parse(req.body), actor(req)),
   );
 }
 

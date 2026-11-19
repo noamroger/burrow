@@ -12,7 +12,9 @@ import {
 } from '@burrow/shared';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { AppContext } from '../context.js';
+import type { Actor } from '../services/audit.js';
 import {
+  actor,
   assertCsrf,
   clearSessionCookie,
   requireAuth,
@@ -22,6 +24,13 @@ import {
   userId,
   webAuthnOrigin,
 } from '../http/session.js';
+
+/** The user signing in, for the audit log. */
+const loginActor = (req: FastifyRequest, user: { id: number; email: string }): Actor => ({
+  userId: user.id,
+  label: user.email,
+  ip: req.ip,
+});
 
 /** Login and setup attempts allowed per IP and minute. */
 const LOGIN_RATE_LIMIT = { max: 5, timeWindow: '1 minute' };
@@ -51,7 +60,7 @@ export async function authRoutes(app: FastifyInstance, ctx: AppContext): Promise
   app.post('/api/setup/admin', { config: { rateLimit: LOGIN_RATE_LIMIT } }, async (req, reply) => {
     const input = createAdminSchema.parse(req.body);
     const user = await ctx.auth.createAdmin(input.email, input.password);
-    ctx.audit.record(user.id, 'setup.admin', user.email);
+    ctx.audit.record(loginActor(req, user), 'setup.admin', user.email);
     req.log.info({ userId: user.id }, 'admin account created');
     return reply.status(201).send(startSession(req, reply, user));
   });
@@ -68,7 +77,7 @@ export async function authRoutes(app: FastifyInstance, ctx: AppContext): Promise
       };
       return reply.send(body);
     }
-    ctx.audit.record(user.id, 'auth.login');
+    ctx.audit.record(loginActor(req, user), 'auth.login', null, { details: { note: 'password' } });
     return reply.send(startSession(req, reply, user));
   });
 
@@ -80,7 +89,9 @@ export async function authRoutes(app: FastifyInstance, ctx: AppContext): Promise
       const input = verifyLoginSchema.parse(req.body);
       const { userId: id, method } = ctx.twoFactor.verifyTicketCode(input.ticket, input.code);
       const user = ctx.auth.findUser(id);
-      ctx.audit.record(user.id, 'auth.login', method === 'recovery' ? 'recovery code' : 'TOTP');
+      ctx.audit.record(loginActor(req, user), 'auth.login', null, {
+        details: { note: method === 'recovery' ? 'password + recovery code' : 'password + TOTP' },
+      });
       return reply.send(startSession(req, reply, user));
     },
   );
@@ -106,7 +117,9 @@ export async function authRoutes(app: FastifyInstance, ctx: AppContext): Promise
         webAuthnOrigin(req),
       );
       const user = ctx.auth.findUser(id);
-      ctx.audit.record(user.id, 'auth.login', 'passkey');
+      ctx.audit.record(loginActor(req, user), 'auth.login', null, {
+        details: { note: 'passkey' },
+      });
       return reply.send(startSession(req, reply, user));
     },
   );
@@ -135,7 +148,7 @@ export async function authRoutes(app: FastifyInstance, ctx: AppContext): Promise
         input.newPassword,
         req.auth!.session.id,
       );
-      ctx.audit.record(userId(req), 'auth.password');
+      ctx.audit.record(actor(req), 'auth.password');
       return reply.status(204).send();
     },
   );

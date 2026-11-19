@@ -12,7 +12,7 @@ import {
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
-import { requireSession, userId, webAuthnOrigin } from '../http/session.js';
+import { actor, requireSession, userId, webAuthnOrigin } from '../http/session.js';
 
 const idParams = z.object({ id: z.coerce.number().int().positive() });
 /** Password confirmations are rate limited like the login. */
@@ -39,7 +39,7 @@ export async function twoFactorRoutes(app: FastifyInstance, ctx: AppContext): Pr
   app.post('/api/auth/2fa/totp/enable', async (req): Promise<RecoveryCodes> => {
     const { code } = enableTotpSchema.parse(req.body);
     const recoveryCodes = ctx.twoFactor.enableTotp(userId(req), code);
-    ctx.audit.record(userId(req), 'auth.2fa.totp.enable');
+    ctx.audit.record(actor(req), 'auth.2fa.totp.enable');
     return { recoveryCodes };
   });
 
@@ -50,7 +50,7 @@ export async function twoFactorRoutes(app: FastifyInstance, ctx: AppContext): Pr
       const { password } = confirmPasswordSchema.parse(req.body);
       await ctx.auth.confirmPassword(userId(req), password);
       ctx.twoFactor.disableTotp(userId(req));
-      ctx.audit.record(userId(req), 'auth.2fa.totp.disable');
+      ctx.audit.record(actor(req), 'auth.2fa.totp.disable');
       return reply.status(204).send();
     },
   );
@@ -62,7 +62,7 @@ export async function twoFactorRoutes(app: FastifyInstance, ctx: AppContext): Pr
       const { password } = confirmPasswordSchema.parse(req.body);
       await ctx.auth.confirmPassword(userId(req), password);
       const recoveryCodes = ctx.twoFactor.regenerateRecoveryCodes(userId(req));
-      ctx.audit.record(userId(req), 'auth.2fa.recovery.regenerate');
+      ctx.audit.record(actor(req), 'auth.2fa.recovery.regenerate');
       return { recoveryCodes };
     },
   );
@@ -80,7 +80,7 @@ export async function twoFactorRoutes(app: FastifyInstance, ctx: AppContext): Pr
       input.response,
       webAuthnOrigin(req),
     );
-    ctx.audit.record(userId(req), 'auth.2fa.passkey.add', input.name);
+    ctx.audit.record(actor(req), 'auth.2fa.passkey.add', input.name);
     return reply.status(201).send(result);
   });
 
@@ -98,7 +98,7 @@ export async function twoFactorRoutes(app: FastifyInstance, ctx: AppContext): Pr
       const { password } = confirmPasswordSchema.parse(req.body);
       await ctx.auth.confirmPassword(userId(req), password);
       const name = ctx.twoFactor.removePasskey(userId(req), id);
-      ctx.audit.record(userId(req), 'auth.2fa.passkey.remove', name);
+      ctx.audit.record(actor(req), 'auth.2fa.passkey.remove', name);
       return reply.status(204).send();
     },
   );

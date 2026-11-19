@@ -187,6 +187,37 @@ const ops: Operation[] = [
     response: null,
     status: 204,
   },
+  /* ---- audit log ---- */
+  {
+    method: 'get',
+    path: '/api/audit',
+    tag: 'Audit log',
+    summary: 'Who changed what and when, newest first',
+    description:
+      'Filter with `category`, `q` (searches the action, target, actor and IP), `from`/`to` and `undoable=true`. Page with `before` = `nextBefore`.',
+    query: {
+      category: { schema: s.auditCategorySchema, description: 'Only this kind of change' },
+      q: { schema: z.string(), description: 'Text to search' },
+      undoable: {
+        schema: z.enum(['true', 'false']),
+        description: 'Only changes that can be undone',
+      },
+      from: { schema: z.string(), description: 'ISO 8601 start' },
+      to: { schema: z.string(), description: 'ISO 8601 end' },
+      before: { schema: z.number().int(), description: 'Entries older than this id' },
+      limit: { schema: z.number().int(), description: '1 to 200 (default 50)' },
+    },
+    response: s.auditPageSchema,
+  },
+  {
+    method: 'post',
+    path: '/api/audit/{id}/undo',
+    tag: 'Audit log',
+    summary: 'Undo a change',
+    description:
+      'Reverses the change through the normal services (Cloudflare is re-synced). Refused with 409 when it cannot be undone, was already undone, or was changed again since.',
+    response: s.auditUndoResultSchema,
+  },
   /* ---- API tokens ---- */
   {
     method: 'get',

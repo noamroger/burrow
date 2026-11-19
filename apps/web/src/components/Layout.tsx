@@ -21,6 +21,7 @@ const NAV: Array<{ to: string; label: MessageKey; icon: IconName; end?: boolean 
   { to: '/', label: 'nav.hosts', icon: 'globe', end: true },
   { to: '/tunnel', label: 'nav.tunnel', icon: 'tunnel' },
   { to: '/monitoring', label: 'nav.monitoring', icon: 'activity' },
+  { to: '/activity', label: 'nav.activity', icon: 'history' },
   { to: '/settings', label: 'nav.settings', icon: 'settings' },
 ];
 

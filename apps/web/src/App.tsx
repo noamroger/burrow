@@ -6,6 +6,7 @@
  *   /          proxy hosts        ┐
  *   /tunnel    tunnel + live logs ├ require a session and a configured token
  *   /monitoring uptime history     │
+ *   /activity  audit log + undo    │
  *   /settings  settings           ┘
  *   /home      homepage (public, or for the signed-in admin; Settings › Homepage)
  */
@@ -25,6 +26,7 @@ import { queryKeys, useMe, useSetupStatus } from './api/queries';
 import { Layout } from './components/Layout';
 import { ToastProvider } from './components/ui/Toast';
 import { FullPageSpinner, FullPageError } from './pages/FullPage';
+import { ActivityPage } from './pages/ActivityPage';
 import { HomePage } from './pages/HomePage';
 import { HostsPage } from './pages/HostsPage';
 import { LoginPage } from './pages/LoginPage';
@@ -98,6 +100,7 @@ export function AppRoutes() {
             <Route path="/tunnel" element={<TunnelPage />} />
             <Route path="/monitoring" element={<MonitoringPage />} />
             <Route path="/monitoring/:id" element={<MonitorDetailPage />} />
+            <Route path="/activity" element={<ActivityPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Route>

@@ -3,6 +3,7 @@ import type { AppContext } from '../context.js';
 import { AppError } from '../lib/errors.js';
 import { safeEqual, type AuthenticatedSession } from '../services/auth.js';
 import type { WebAuthnOrigin } from '../services/two-factor.js';
+import type { Actor } from '../services/audit.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -120,4 +121,15 @@ export function webAuthnOrigin(req: FastifyRequest): WebAuthnOrigin {
 export function userId(req: FastifyRequest): number {
   if (!req.auth) throw new AppError('UNAUTHORIZED', 'Authentication required', 401);
   return req.auth.user.id;
+}
+
+/** Who is making this request, for the audit log (email or API token, and IP). */
+export function actor(req: FastifyRequest): Actor {
+  const auth = req.auth;
+  if (!auth) return { userId: null, label: 'Anonymous', ip: req.ip };
+  return {
+    userId: auth.user.id,
+    label: auth.via === 'token' ? `API token "${auth.tokenName ?? '?'}"` : auth.user.email,
+    ip: req.ip,
+  };
 }

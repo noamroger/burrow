@@ -8,7 +8,7 @@ import {
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
-import { userId } from '../http/session.js';
+import { actor } from '../http/session.js';
 import { renderBadge } from '../services/badge.js';
 
 const idParams = z.object({ id: z.coerce.number().int().positive() });
@@ -27,14 +27,14 @@ export async function monitoringRoutes(app: FastifyInstance, ctx: AppContext): P
   app.post('/api/monitoring/hosts/:id/badge', async (req): Promise<BadgeResponse> => {
     const { id } = idParams.parse(req.params);
     const badgeToken = ctx.monitoring.enableBadge(id);
-    ctx.audit.record(userId(req), 'badge.enable', String(id));
+    ctx.audit.record(actor(req), 'badge.enable', String(id));
     return { badgeToken };
   });
 
   app.delete('/api/monitoring/hosts/:id/badge', async (req, reply) => {
     const { id } = idParams.parse(req.params);
     ctx.monitoring.disableBadge(id);
-    ctx.audit.record(userId(req), 'badge.disable', String(id));
+    ctx.audit.record(actor(req), 'badge.disable', String(id));
     return reply.status(204).send();
   });
 }

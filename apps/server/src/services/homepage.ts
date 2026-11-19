@@ -31,7 +31,7 @@ import type { Db } from '../db/client.js';
 import { proxyHosts, type ProxyHostRow } from '../db/schema.js';
 import type { SettingsRepository } from '../db/settings.js';
 import { errorMessage } from '../lib/errors.js';
-import type { AuditService } from './audit.js';
+import { diff, type ActorLike, type AuditService } from './audit.js';
 import type { HealthService } from './health.js';
 
 export const HOMEPAGE_SETTINGS_KEY = 'homepage.settings';
@@ -100,11 +100,18 @@ export class HomepageService {
     return this.cachedSettings;
   }
 
-  saveSettings(input: unknown, userId: number | null): HomepageSettings {
+  saveSettings(input: unknown, by: ActorLike): HomepageSettings {
+    const before = this.settings();
     const settings = homepageSettingsSchema.parse(input);
     this.opts.settings.set(HOMEPAGE_SETTINGS_KEY, settings);
     this.cachedSettings = settings;
-    this.opts.audit.record(userId, 'homepage.update', settings.enabled ? 'on' : 'off');
+    const changes = diff(before, settings);
+    if (changes.length > 0) {
+      this.opts.audit.record(by, 'homepage.update', settings.enabled ? 'on' : 'off', {
+        details: { changes },
+        undo: { kind: 'homepage.settings', settings: before, expect: settings },
+      });
+    }
     return settings;
   }
 

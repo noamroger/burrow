@@ -22,6 +22,7 @@ export * from './monitoring.js';
 export * from './notifications.js';
 export * from './traffic.js';
 export * from './security.js';
+export * from './audit.js';
 
 /* ------------------------------------------------------------------ */
 /* Common                                                              */

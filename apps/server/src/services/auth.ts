@@ -34,6 +34,8 @@ export interface AuthenticatedSession {
   session: SessionRow;
   /** How the request authenticated: a browser session cookie or an API token. */
   via?: 'session' | 'token';
+  /** Name of the API token, when `via` is `token` (for the audit log). */
+  tokenName?: string;
   /** Set when the expiry was extended and the cookie should be re-sent. */
   renewedUntil?: Date;
 }

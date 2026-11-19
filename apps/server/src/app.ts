@@ -13,6 +13,7 @@ import { registerErrorHandler } from './http/errors.js';
 import { buildOpenApi } from './http/openapi.js';
 import { registerSession, requireAuth } from './http/session.js';
 import { AppError } from './lib/errors.js';
+import { auditRoutes } from './routes/audit.js';
 import { authRoutes } from './routes/auth.js';
 import { cloudflareRoutes } from './routes/cloudflare.js';
 import { configRoutes } from './routes/config.js';
@@ -196,6 +197,7 @@ export async function buildApp(
     await homepageSettingsRoutes(scope, ctx);
     await tokenRoutes(scope, ctx);
     await twoFactorRoutes(scope, ctx);
+    await auditRoutes(scope, ctx);
   });
 
   const webRoot = ctx.config.webDistDir;

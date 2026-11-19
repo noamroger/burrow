@@ -3,6 +3,9 @@
  * See packages/shared/src/index.ts for the route documentation.
  */
 import {
+  auditPageSchema,
+  auditUndoResultSchema,
+  type AuditQuery,
   loginResponseSchema,
   passkeyOptionsSchema,
   passkeySchema,
@@ -136,6 +139,18 @@ export const twoFactorApi = {
     api.patch(`/auth/2fa/passkeys/${id}`, { name }, passkeySchema),
   removePasskey: (id: number, password: string) =>
     api.request(`/auth/2fa/passkeys/${id}`, { method: 'DELETE', body: { password } }),
+};
+
+export const auditApi = {
+  list: (query: AuditQuery) => {
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries(query)) {
+      if (v !== undefined && v !== '') params.set(k, String(v));
+    }
+    const qs = params.toString();
+    return api.get(`/audit${qs ? `?${qs}` : ''}`, auditPageSchema);
+  },
+  undo: (id: number) => api.post(`/audit/${id}/undo`, undefined, auditUndoResultSchema),
 };
 
 export const cloudflareApi = {

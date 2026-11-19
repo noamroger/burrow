@@ -2,9 +2,10 @@
  * TanStack Query hooks. Components never call `fetch` directly: they use these
  * hooks, which share caching, polling and invalidation rules.
  */
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { isApiError } from './client';
 import type {
+  AuditQuery,
   ChannelInput,
   MeResponse,
   MonitoringRange,
@@ -35,12 +36,14 @@ import {
   homepageApi,
   zonesApi,
   twoFactorApi,
+  auditApi,
 } from './endpoints';
 
 export const queryKeys = {
   setupStatus: ['setup', 'status'] as const,
   me: ['auth', 'me'] as const,
   twoFactor: ['auth', '2fa'] as const,
+  audit: ['audit'] as const,
   cloudflare: ['cloudflare'] as const,
   zones: ['zones'] as const,
   tunnel: ['tunnel'] as const,
@@ -641,5 +644,25 @@ export function useHealth() {
     queryFn: healthApi.get,
     staleTime: 5 * 60_000,
     retry: false,
+  });
+}
+
+/* ------------------------------ audit log ----------------------------- */
+
+export function useAuditLog(filters: Omit<AuditQuery, 'before'>) {
+  return useInfiniteQuery({
+    queryKey: [...queryKeys.audit, filters],
+    queryFn: ({ pageParam }) => auditApi.list({ ...filters, before: pageParam }),
+    initialPageParam: undefined as number | undefined,
+    getNextPageParam: (last) => last.nextBefore ?? undefined,
+  });
+}
+
+/** Undo a change: anything may have moved, so refresh everything. */
+export function useUndoChange() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: auditApi.undo,
+    onSuccess: () => qc.invalidateQueries(),
   });
 }
