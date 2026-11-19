@@ -13,7 +13,7 @@
  */
 import { passwordSchema } from '@burrow/shared';
 import { eq } from 'drizzle-orm';
-import { randomBytes } from 'node:crypto';
+import { randomInt } from 'node:crypto';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { pathToFileURL } from 'node:url';
@@ -118,12 +118,12 @@ export async function resetPassword(opts: ResetOptions): Promise<ResetResult> {
   }
 }
 
-/** 24 characters from an unambiguous alphabet (about 136 bits). */
+/** 24 characters from an unambiguous alphabet (about 139 bits). */
 export function generatePassword(): string {
   const alphabet = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  const bytes = randomBytes(24);
   let out = '';
-  for (const b of bytes) out += alphabet[b % alphabet.length];
+  // randomInt draws uniformly (no modulo bias).
+  for (let i = 0; i < 24; i++) out += alphabet[randomInt(alphabet.length)];
   return out.replace(/(.{6})(?!$)/g, '$1-');
 }
 
