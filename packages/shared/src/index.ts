@@ -10,9 +10,11 @@
  * value returned by `GET /api/auth/me`.
  */
 import { z } from 'zod';
+import { hostMaintenanceSchema } from './maintenance.js';
 import { templateIdSchema } from './templates.js';
 
 export * from './templates.js';
+export * from './maintenance.js';
 
 /* ------------------------------------------------------------------ */
 /* Common                                                              */
@@ -496,6 +498,8 @@ export const proxyHostSchema = z.object({
   sourceRef: z.string().nullable(),
   /** Temporary host: removed automatically at this time. */
   expiresAt: z.string().nullable(),
+  /** Maintenance mode: visitors get the maintenance page instead of the service. */
+  maintenance: hostMaintenanceSchema,
   sync: z.object({
     status: syncStatusSchema,
     error: z.string().nullable(),

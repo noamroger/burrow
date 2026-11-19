@@ -23,6 +23,7 @@ import {
   configApi,
   driftApi,
   dockerApi,
+  maintenanceApi,
   backupsApi,
   zonesApi,
 } from './endpoints';
@@ -44,6 +45,7 @@ export const queryKeys = {
   drift: ['drift'] as const,
   backups: ['backups'] as const,
   docker: ['docker'] as const,
+  maintenancePage: ['maintenance', 'page'] as const,
 };
 
 /** Polling intervals (ms). */
@@ -275,6 +277,34 @@ export function useDriftSettings() {
   return useMutation({
     mutationFn: driftApi.settings,
     onSuccess: (report) => qc.setQueryData(queryKeys.drift, report),
+  });
+}
+
+/* ----------------------------- maintenance ---------------------------- */
+
+export function useMaintenancePage() {
+  return useQuery({ queryKey: queryKeys.maintenancePage, queryFn: maintenanceApi.page });
+}
+
+export function useSaveMaintenancePage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: maintenanceApi.savePage,
+    onSuccess: (page) => qc.setQueryData(queryKeys.maintenancePage, page),
+  });
+}
+
+export function useHostMaintenance() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      input,
+    }: {
+      id: number;
+      input: Parameters<typeof maintenanceApi.setHost>[1];
+    }) => maintenanceApi.setHost(id, input),
+    onSettled: () => void qc.invalidateQueries({ queryKey: queryKeys.hosts }),
   });
 }
 

@@ -47,6 +47,8 @@ export interface ReconcilerOptions {
   cloudflare: CloudflareService;
   tunnels: TunnelService;
   logger: Logger;
+  /** Where hosts in maintenance mode are routed (Burrow's maintenance server). */
+  maintenanceOrigin?: string;
 }
 
 const EMPTY_RESULT: SyncResult = { startedAt: null, finishedAt: null, ok: true, actions: [] };
@@ -135,7 +137,26 @@ interface AccessStep {
   finish: () => Promise<void>;
 }
 
-export function toPlanHost(row: ProxyHostRow): PlanHost {
+/**
+ * A host as the planner sees it. A host in maintenance mode is routed to
+ * Burrow's maintenance server instead of its service; its origin options do
+ * not apply there (the Host header must stay the public hostname).
+ */
+export function toPlanHost(row: ProxyHostRow, maintenanceOrigin?: string): PlanHost {
+  if (row.maintenanceEnabled && maintenanceOrigin) {
+    return {
+      id: row.id,
+      zoneId: row.zoneId,
+      hostname: row.hostname,
+      path: row.path,
+      service: maintenanceOrigin,
+      noTlsVerify: false,
+      httpHostHeader: '',
+      originServerName: '',
+      originRequestExtra: {},
+      enabled: row.enabled,
+    };
+  }
   return {
     id: row.id,
     zoneId: row.zoneId,
@@ -213,18 +234,21 @@ export class Reconciler extends EventEmitter<{ synced: [SyncResult] }> {
           const configuration = await client.getTunnelConfiguration(accountId, t.tunnel.id);
           const ingress = configuration.config?.ingress ?? [];
           const own = rows.filter((r) => tunnelOf(r) === t.row.id);
-          const p = plan(own.map(toPlanHost), {
-            tunnelId: t.tunnel.id,
-            ingress,
-            managedKeys: t.row.managedIngress,
-            dnsRecords: records,
-            unavailableZones: unavailable,
-            otherHostnames: new Set(
-              rows
-                .filter((r) => tunnelOf(r) !== t.row.id && r.enabled)
-                .map((r) => r.hostname.toLowerCase()),
-            ),
-          });
+          const p = plan(
+            own.map((r) => toPlanHost(r, this.opts.maintenanceOrigin)),
+            {
+              tunnelId: t.tunnel.id,
+              ingress,
+              managedKeys: t.row.managedIngress,
+              dnsRecords: records,
+              unavailableZones: unavailable,
+              otherHostnames: new Set(
+                rows
+                  .filter((r) => tunnelOf(r) !== t.row.id && r.enabled)
+                  .map((r) => r.hostname.toLowerCase()),
+              ),
+            },
+          );
           tunnels.push({ row: t.row, ingress, plan: p });
         } catch (err) {
           failures.push(`${t.row.name}: ${errorMessage(err)}`);
@@ -305,7 +329,7 @@ export class Reconciler extends EventEmitter<{ synced: [SyncResult] }> {
           contexts.push({
             ensured: t,
             configuration,
-            hosts: own.map(toPlanHost),
+            hosts: own.map((r) => toPlanHost(r, this.opts.maintenanceOrigin)),
             actual: {
               tunnelId: t.tunnel.id,
               ingress: configuration.config?.ingress ?? [],

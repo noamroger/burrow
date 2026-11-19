@@ -11,6 +11,9 @@ import {
   type BackupSettingsInput,
   driftReportSchema,
   dockerStatusSchema,
+  maintenancePageSchema,
+  type HostMaintenanceInput,
+  type MaintenancePageInput,
   createdApiTokenSchema,
   cloudflareSettingsSchema,
   importTunnelResultSchema,
@@ -130,6 +133,14 @@ export const driftApi = {
   resolve: (strategy: 'revert' | 'keep') =>
     api.post('/drift/resolve', { strategy }, driftReportSchema),
   settings: (autoRepair: boolean) => api.put('/drift/settings', { autoRepair }, driftReportSchema),
+};
+
+export const maintenanceApi = {
+  page: () => api.get('/maintenance/page', maintenancePageSchema),
+  savePage: (page: MaintenancePageInput) =>
+    api.put('/maintenance/page', page, maintenancePageSchema),
+  setHost: (id: number, input: HostMaintenanceInput) =>
+    api.put(`/hosts/${id}/maintenance`, input, proxyHostSchema),
 };
 
 export const dockerApi = {

@@ -100,6 +100,11 @@ export class HostService {
       source: row.source,
       sourceRef: row.sourceRef,
       expiresAt: row.expiresAt,
+      maintenance: {
+        enabled: row.maintenanceEnabled,
+        until: row.maintenanceUntil,
+        page: row.maintenancePage ?? null,
+      },
       sync: { status: row.syncStatus, error: row.syncError, lastSyncedAt: row.lastSyncedAt },
       health,
       createdAt: row.createdAt,

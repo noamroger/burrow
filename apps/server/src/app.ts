@@ -22,6 +22,7 @@ import { driftRoutes } from './routes/drift.js';
 import { healthRoutes } from './routes/health.js';
 import { hostRoutes } from './routes/hosts.js';
 import { logRoutes } from './routes/logs.js';
+import { maintenanceRoutes } from './routes/maintenance.js';
 import { tokenRoutes } from './routes/tokens.js';
 import { tunnelRoutes } from './routes/tunnel.js';
 
@@ -152,6 +153,7 @@ export async function buildApp(
     await driftRoutes(scope, ctx);
     await backupRoutes(scope, ctx);
     await dockerRoutes(scope, ctx);
+    await maintenanceRoutes(scope, ctx);
     await tokenRoutes(scope, ctx);
   });
 

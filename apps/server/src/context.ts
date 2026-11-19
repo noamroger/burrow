@@ -19,6 +19,7 @@ import { DriftService } from './services/drift.js';
 import { HealthService } from './services/health.js';
 import { HostService } from './services/hosts.js';
 import { LogBuffer } from './services/log-buffer.js';
+import { MaintenanceService } from './services/maintenance.js';
 import { Reconciler } from './services/reconciler.js';
 import type { SupervisorOptions } from './services/supervisor.js';
 import { SupervisorPool } from './services/supervisors.js';
@@ -51,6 +52,7 @@ export interface AppContext {
   drift: DriftService;
   backups: BackupService;
   docker: DockerDiscoveryService;
+  maintenance: MaintenanceService;
   lifecycle: Lifecycle;
 }
 
@@ -120,6 +122,7 @@ export function createContext(
     cloudflare,
     tunnels,
     logger: logger.child({ component: 'reconciler' }),
+    maintenanceOrigin: config.maintenanceOrigin,
   });
   const health = new HealthService(overrides.healthTimeoutMs ?? 5_000);
   const hosts = new HostService({ db, reconciler, cloudflare, health, audit, tunnels, logger });
@@ -181,6 +184,18 @@ export function createContext(
       selfHostname: overrides.dockerSelfHostname ?? defaultSelfHostname(),
       isCloudflareConfigured: () => cloudflare.isConfigured(),
     }),
+    maintenance: new MaintenanceService({
+      db,
+      settings,
+      hosts,
+      reconciler,
+      cloudflare,
+      audit,
+      logger: logger.child({ component: 'maintenance' }),
+      port: config.maintenancePort,
+      listen: config.maintenanceListen,
+      origin: config.maintenanceOrigin,
+    }),
   } as Omit<AppContext, 'lifecycle'> as AppContext;
   ctx.lifecycle = new Lifecycle(ctx);
   return ctx;
@@ -209,6 +224,7 @@ export class Lifecycle {
   /** Called once after the HTTP server listens. Never throws. */
   async start(): Promise<void> {
     const { ctx } = this;
+    await ctx.maintenance.start();
     const version = await ctx.supervisors.detectVersion();
     if (version) ctx.logger.info({ version }, 'cloudflared found');
     else
@@ -245,6 +261,7 @@ export class Lifecycle {
     for (const t of this.timers) clearInterval(t);
     this.timers = [];
     await this.ctx.supervisors.stopAll();
+    await this.ctx.maintenance.stop();
   }
 
   /** Startup with a token: ensure the default tunnel, start the connectors, reconcile. */

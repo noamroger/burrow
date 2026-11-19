@@ -196,6 +196,32 @@ const ops: Operation[] = [
     summary: 'Probe the origin now',
     response: s.originHealthSchema,
   },
+  /* ---- maintenance ---- */
+  {
+    method: 'put',
+    path: '/api/hosts/{id}/maintenance',
+    tag: 'Maintenance',
+    summary: 'Turn maintenance mode on or off for a host',
+    description:
+      'On: the route points at the maintenance server, which answers 503 with the page. `page: null` uses the default page.',
+    body: s.hostMaintenanceInputSchema,
+    response: s.proxyHostSchema,
+  },
+  {
+    method: 'get',
+    path: '/api/maintenance/page',
+    tag: 'Maintenance',
+    summary: 'Default maintenance page',
+    response: s.maintenancePageSchema,
+  },
+  {
+    method: 'put',
+    path: '/api/maintenance/page',
+    tag: 'Maintenance',
+    summary: 'Save the default maintenance page (simple design or full HTML)',
+    body: s.maintenancePageSchema,
+    response: s.maintenancePageSchema,
+  },
   /* ---- templates ---- */
   {
     method: 'get',

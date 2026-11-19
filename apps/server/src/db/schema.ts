@@ -4,6 +4,7 @@
  *
  * Timestamps are ISO 8601 strings; booleans are stored as 0/1 integers.
  */
+import type { MaintenancePage } from '@burrow/shared';
 import { sql } from 'drizzle-orm';
 import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
@@ -131,6 +132,13 @@ export const proxyHosts = sqliteTable(
     sourceRef: text('source_ref'),
     /** Temporary host: removed automatically after this time (ISO 8601). */
     expiresAt: text('expires_at'),
+    /** Maintenance mode: the route points at Burrow's maintenance server. */
+    maintenanceEnabled: integer('maintenance_enabled', { mode: 'boolean' })
+      .notNull()
+      .default(false),
+    maintenanceUntil: text('maintenance_until'),
+    /** Page for this host only (MaintenancePage JSON); null = default page. */
+    maintenancePage: text('maintenance_page', { mode: 'json' }).$type<MaintenancePage | null>(),
     dnsRecordId: text('dns_record_id'),
     syncStatus: text('sync_status', { enum: ['pending', 'synced', 'error', 'drift'] })
       .notNull()

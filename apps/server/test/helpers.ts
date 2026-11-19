@@ -42,6 +42,8 @@ export async function createTestApp(
     HEALTHCHECK_INTERVAL_SECONDS: '0',
     WEB_DIST_DIR: join(dataDir, 'no-web'),
     CLOUDFLARED_METRICS: '127.0.0.1:0',
+    MAINTENANCE_PORT: '0',
+    MAINTENANCE_ORIGIN: 'http://127.0.0.1:8081',
   });
   const ctx = createContext(config, pino({ level: 'silent' }), {
     cloudflareRetryBaseMs: 1,
