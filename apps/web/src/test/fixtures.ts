@@ -24,6 +24,7 @@ export function makeHost(overrides: Partial<ProxyHost> = {}): ProxyHost {
     template: null,
     source: 'manual',
     sourceRef: null,
+    expiresAt: null,
     sync: { status: 'synced', error: null, lastSyncedAt: '2026-11-18T10:00:00.000Z' },
     health: {
       state: 'up',

@@ -38,6 +38,7 @@ import { useNow } from '../hooks/useNow';
 import { t, tPlural } from '../i18n';
 import { cn } from '../lib/cn';
 import { errorMessage } from '../lib/errors';
+import { formatDateTime, formatRelative } from '../lib/format';
 
 export function filterHosts(hosts: ProxyHost[], query: string): ProxyHost[] {
   const q = query.trim().toLowerCase();
@@ -380,6 +381,13 @@ function HostnameLink({ host }: { host: ProxyHost }) {
       {host.path ? (
         <p className="mt-0.5 truncate font-mono text-xs text-fg-muted" title={t('hosts.pathTitle')}>
           {t('hosts.pathLabel')} {host.path}
+        </p>
+      ) : null}
+      {host.expiresAt ? (
+        <p className="mt-1" title={formatDateTime(host.expiresAt)}>
+          <Badge tone="warning">
+            {t('hosts.expires', { when: formatRelative(host.expiresAt) })}
+          </Badge>
         </p>
       ) : null}
       {host.source === 'docker' ? (

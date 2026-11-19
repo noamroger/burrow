@@ -429,10 +429,19 @@ export const proxyHostInputSchema = z.object({
   access: accessSettingsInputSchema.optional().default({}),
   /** Service template the host was made from (see GET /api/templates), or null. */
   template: templateIdSchema.optional().default(null),
+  /**
+   * Temporary host: removed automatically (route, DNS record, Access app) at
+   * this time (ISO 8601, in the future). `null` = permanent. Omitted on update:
+   * unchanged.
+   */
+  expiresAt: z.string().datetime({ offset: true }).nullable().optional(),
 });
 /** POST /api/hosts body. PUT /api/hosts/:id body (full replace). */
 export type ProxyHostInput = z.input<typeof proxyHostInputSchema>;
 export type ProxyHostParsedInput = z.output<typeof proxyHostInputSchema>;
+
+/** Durations offered for temporary hosts, in minutes. */
+export const TEMPORARY_DURATIONS = [60, 120, 360, 1440, 10080] as const;
 
 export const SYNC_STATUSES = ['pending', 'synced', 'error', 'drift'] as const;
 export const syncStatusSchema = z.enum(SYNC_STATUSES);
@@ -485,6 +494,8 @@ export const proxyHostSchema = z.object({
   source: hostSourceSchema,
   /** For `docker`: the container name. */
   sourceRef: z.string().nullable(),
+  /** Temporary host: removed automatically at this time. */
+  expiresAt: z.string().nullable(),
   sync: z.object({
     status: syncStatusSchema,
     error: z.string().nullable(),

@@ -99,6 +99,7 @@ export class HostService {
       template: row.template,
       source: row.source,
       sourceRef: row.sourceRef,
+      expiresAt: row.expiresAt,
       sync: { status: row.syncStatus, error: row.syncError, lastSyncedAt: row.lastSyncedAt },
       health,
       createdAt: row.createdAt,
@@ -208,6 +209,7 @@ export class HostService {
       accessEmailDomains: [...new Set(input.access.emailDomains)],
       accessSessionDuration: input.access.sessionDuration,
       template: input.template,
+      ...(input.expiresAt !== undefined ? { expiresAt: expiry(input.expiresAt) } : {}),
     };
   }
 
@@ -420,6 +422,32 @@ export class HostService {
     }
   }
 
+  /**
+   * Remove temporary hosts whose time is up (periodic job). Each removal
+   * unpublishes the route, the DNS record and the Access application.
+   * Returns the hostnames removed.
+   */
+  async removeExpired(now = new Date()): Promise<string[]> {
+    const expired = this.rows().filter(
+      (r) => r.expiresAt !== null && Date.parse(r.expiresAt) <= now.getTime(),
+    );
+    const removed: string[] = [];
+    for (const row of expired) {
+      try {
+        await this.remove(row.id, null, { source: row.source, ref: row.sourceRef });
+        this.opts.audit.record(null, 'host.expire', row.hostname + row.path);
+        this.opts.logger.info({ hostname: row.hostname }, 'temporary host expired and removed');
+        removed.push(row.hostname + row.path);
+      } catch (err) {
+        this.opts.logger.warn(
+          { hostname: row.hostname, err: errorMessage(err) },
+          'could not remove expired host',
+        );
+      }
+    }
+    return removed;
+  }
+
   /** Probe a host's origin now. */
   async check(id: number): Promise<OriginHealth> {
     const row = this.getRow(id);
@@ -466,4 +494,14 @@ function uniqueScope(items: SyncScopeItem[]): SyncScopeItem[] {
     seen.add(key);
     return true;
   });
+}
+
+/** Validate an expiry: null (permanent) or a time in the future, normalised to UTC. */
+function expiry(value: string | null): string | null {
+  if (value === null) return null;
+  const time = Date.parse(value);
+  if (Number.isNaN(time) || time <= Date.now()) {
+    throw errors.validation('The expiry time must be in the future.', { field: 'expiresAt' });
+  }
+  return new Date(time).toISOString();
 }

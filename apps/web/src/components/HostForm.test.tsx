@@ -58,6 +58,19 @@ describe('HostForm', () => {
     });
   });
 
+  it('makes a temporary host that expires after the chosen duration', async () => {
+    const { user, onSubmit } = setup();
+    await user.type(screen.getByLabelText('Subdomain'), 'demo');
+    await user.type(screen.getByLabelText('Service URL'), 'http://10.0.0.1:3000');
+    await user.selectOptions(screen.getByLabelText('Remove automatically'), '120');
+    const before = Date.now();
+    await user.click(screen.getByRole('button', { name: 'Create host' }));
+    const input = (onSubmit.mock.calls[0] as unknown as [{ expiresAt: string }])[0];
+    const delta = Date.parse(input.expiresAt) - before;
+    expect(delta).toBeGreaterThan(119 * 60_000);
+    expect(delta).toBeLessThan(121 * 60_000);
+  });
+
   it('prefills the service and options from a template, keeping a typed address', async () => {
     const { user, onSubmit } = setup();
     await user.type(screen.getByLabelText('Service URL'), 'http://192.168.1.2');

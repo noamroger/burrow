@@ -1,0 +1,1 @@
+ALTER TABLE `proxy_hosts` ADD `expires_at` text;

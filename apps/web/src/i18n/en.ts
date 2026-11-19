@@ -214,6 +214,14 @@ export const en = {
   'host.path': 'Path',
   'host.pathHint': 'A regular expression such as ^/api. Leave empty to match every path.',
   'host.advanced': 'Advanced options',
+  'host.expiry.label': 'Remove automatically',
+  'host.expiry.hint':
+    'For a demo or a share: after this time, Burrow deletes the host, its DNS record and its Access app.',
+  'host.expiry.current': 'This host is removed {when}.',
+  'host.expiry.keep': 'Keep the current time',
+  'host.expiry.never': 'Never (permanent host)',
+  'host.expiry.after': 'After {duration}',
+  'hosts.expires': 'Removed {when}',
   'docker.title': 'Docker discovery',
   'docker.description':
     'Containers with a burrow.host label are published automatically, and unpublished when they are removed.',

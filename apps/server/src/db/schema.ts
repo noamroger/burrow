@@ -129,6 +129,8 @@ export const proxyHosts = sqliteTable(
       .default('manual'),
     /** For Docker hosts: the container name. */
     sourceRef: text('source_ref'),
+    /** Temporary host: removed automatically after this time (ISO 8601). */
+    expiresAt: text('expires_at'),
     dnsRecordId: text('dns_record_id'),
     syncStatus: text('sync_status', { enum: ['pending', 'synced', 'error', 'drift'] })
       .notNull()

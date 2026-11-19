@@ -13,6 +13,7 @@ import {
   proxyHostInputSchema,
   SERVICE_TEMPLATES,
   TEMPLATE_CATEGORIES,
+  TEMPORARY_DURATIONS,
   templateServiceUrl,
   type AccessSessionDuration,
   type ServiceTemplate,
@@ -24,6 +25,7 @@ import {
 import { isApiError } from '../api/client';
 import { t } from '../i18n';
 import { errorMessage } from '../lib/errors';
+import { formatMinutes, formatRelative } from '../lib/format';
 import { fieldErrors } from '../lib/zod';
 import { Icon } from './Icon';
 import { Alert } from './ui/Alert';
@@ -49,6 +51,11 @@ export interface HostFormValues {
   accessSessionDuration: AccessSessionDuration;
   /** Template id, '' for none. */
   template: string;
+  /**
+   * Temporary host: '' keeps the current expiry (none for a new host),
+   * 'never' makes it permanent, a number of minutes sets a new expiry.
+   */
+  expiresIn: string;
 }
 
 /** Split a free-text list on new lines, commas, semicolons and spaces. */
@@ -82,6 +89,7 @@ export function initialValues(host: ProxyHost | undefined, zones: Zone[]): HostF
       accessEmailDomains: host.access.emailDomains.join('\n'),
       accessSessionDuration: host.access.sessionDuration,
       template: host.template ?? '',
+      expiresIn: '',
     };
   }
   return {
@@ -99,6 +107,7 @@ export function initialValues(host: ProxyHost | undefined, zones: Zone[]): HostF
     accessEmailDomains: '',
     accessSessionDuration: '24h',
     template: '',
+    expiresIn: '',
   };
 }
 
@@ -140,6 +149,11 @@ export function toInput(values: HostFormValues): ProxyHostInput {
       sessionDuration: values.accessSessionDuration,
     },
     template: values.template || null,
+    ...(values.expiresIn === 'never'
+      ? { expiresAt: null }
+      : values.expiresIn
+        ? { expiresAt: new Date(Date.now() + Number(values.expiresIn) * 60_000).toISOString() }
+        : {}),
   };
 }
 
@@ -390,6 +404,33 @@ export function HostForm({ host, zones, tunnels = [], onSubmit, onCancel }: Host
           className="font-mono"
           aria-describedby={describedBy(id('path'), { hint: true, error: errors.path })}
         />
+      </Field>
+
+      <Field
+        id={id('expiresIn')}
+        label={t('host.expiry.label')}
+        hint={
+          host?.expiresAt
+            ? t('host.expiry.current', { when: formatRelative(host.expiresAt) })
+            : t('host.expiry.hint')
+        }
+      >
+        <Select
+          id={id('expiresIn')}
+          value={values.expiresIn}
+          onChange={(e) => set('expiresIn', e.target.value)}
+          aria-describedby={describedBy(id('expiresIn'), { hint: true })}
+        >
+          <option value="">
+            {host?.expiresAt ? t('host.expiry.keep') : t('host.expiry.never')}
+          </option>
+          {host?.expiresAt ? <option value="never">{t('host.expiry.never')}</option> : null}
+          {TEMPORARY_DURATIONS.map((m) => (
+            <option key={m} value={String(m)}>
+              {t('host.expiry.after', { duration: formatMinutes(m) })}
+            </option>
+          ))}
+        </Select>
       </Field>
 
       <fieldset className="space-y-4 rounded-lg border border-border px-3.5 py-3.5">

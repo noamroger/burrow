@@ -55,3 +55,15 @@ export function formatUptime(iso: string | null | undefined, now: number = Date.
   if (m > 0) return `${m} min`;
   return `${s} s`;
 }
+
+/** 90 → "1 h 30 min", 1440 → "1 day", 10080 → "7 days". */
+export function formatMinutes(minutes: number): string {
+  if (minutes % 1440 === 0) {
+    const d = minutes / 1440;
+    return d === 1 ? '1 day' : `${d} days`;
+  }
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h === 0) return `${m} min`;
+  return m === 0 ? `${h} h` : `${h} h ${m} min`;
+}

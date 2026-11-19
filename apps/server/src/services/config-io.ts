@@ -102,7 +102,8 @@ export class ConfigService {
       })),
       // Hosts from Docker labels are recreated by the labels, not by a file.
       hosts: hosts
-        .filter((h) => h.source !== 'docker')
+        // Temporary hosts are short-lived demos: not part of the configuration.
+        .filter((h) => h.source !== 'docker' && h.expiresAt === null)
         .sort((a, b) => a.hostname.localeCompare(b.hostname) || a.path.localeCompare(b.path))
         .map((h) => {
           const zone =

@@ -226,6 +226,9 @@ export class Lifecycle {
     if (ctx.config.reconcileIntervalSeconds > 0) {
       this.every(ctx.config.reconcileIntervalSeconds, () => this.checkDrift());
     }
+    // Temporary hosts: remove the expired ones every 30 seconds.
+    this.every(30, () => ctx.hosts.removeExpired());
+    void ctx.hosts.removeExpired().catch(() => undefined);
     // Docker discovery (does nothing while turned off).
     this.every(ctx.config.dockerScanIntervalSeconds, () => ctx.docker.scan());
     void ctx.docker.scan();

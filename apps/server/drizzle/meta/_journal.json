@@ -43,6 +43,13 @@
       "when": 1795059727164,
       "tag": "0005_docker_discovery",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1795066466838,
+      "tag": "0006_temporary_hosts",
+      "breakpoints": true
     }
   ]
 }
