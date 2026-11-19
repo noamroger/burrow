@@ -34,7 +34,7 @@ export function Alert({
   return (
     <div
       role={tone === 'danger' ? 'alert' : 'status'}
-      className={cn('flex gap-3 rounded-lg border px-3.5 py-3 text-sm', style.box, className)}
+      className={cn('flex gap-3 rounded-xl border px-4 py-3.5 text-sm', style.box, className)}
     >
       <Icon name={style.icon} size={18} className={cn('mt-px shrink-0', iconColor[tone])} />
       <div className="min-w-0 flex-1 space-y-1">

@@ -105,9 +105,9 @@ function SidebarContent({ onNavigate }: { onNavigate: () => void }) {
             onClick={onNavigate}
             className={({ isActive }) =>
               cn(
-                'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                'flex items-center gap-3 rounded-xl px-3 py-2.5 text-[0.9375rem] font-medium transition-colors',
                 isActive
-                  ? 'bg-sidebar-active text-sidebar-fg shadow-[inset_3px_0_0_var(--accent)]'
+                  ? 'bg-sidebar-active text-sidebar-fg shadow-[inset_3px_0_0_var(--accent)] [&>svg]:text-lamp'
                   : 'text-sidebar-muted hover:bg-sidebar-active/60 hover:text-sidebar-fg',
               )
             }
@@ -160,11 +160,12 @@ export function Footer() {
   const health = useHealth();
   return (
     <footer className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-5 text-xs text-fg-muted sm:px-6 lg:px-8">
-      <span>
-        {t('app.name')}{' '}
-        {health.data ? <span className="tabular-nums">v{health.data.version}</span> : null}
-        <span className="mx-1.5">·</span>
-        {t('footer.tagline')}
+      <span className="inline-flex items-center gap-3">
+        <span>
+          {t('app.name')}{' '}
+          {health.data ? <span className="tabular-nums">v{health.data.version}</span> : null}
+        </span>
+        <span>{t('footer.tagline')}</span>
       </span>
       <span className="inline-flex items-center gap-4">
         <a

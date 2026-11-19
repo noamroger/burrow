@@ -29,7 +29,7 @@ export function Logo({ className, size = 30 }: { className?: string; size?: numb
   return (
     <span className={cn('inline-flex items-center gap-2.5', className)}>
       <LogoMark size={size} />
-      <span className="text-lg font-semibold tracking-tight">{t('app.name')}</span>
+      <span className="font-display text-xl font-semibold">{t('app.name')}</span>
     </span>
   );
 }
