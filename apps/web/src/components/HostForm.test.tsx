@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiRequestError } from '../api/client';
 import { makeHost, zones, ZONE_ID } from '../test/fixtures';
-import { HostForm } from './HostForm';
+import { accessChanged, HostForm } from './HostForm';
 
 function setup(props: Partial<Parameters<typeof HostForm>[0]> = {}) {
   const onSubmit = vi.fn(async () => {});
@@ -74,6 +74,7 @@ describe('HostForm', () => {
     );
     await user.type(screen.getByLabelText('Allowed email domains'), '@family.example');
     await user.selectOptions(screen.getByLabelText('Stay signed in for'), '1 week');
+    expect(screen.getByText('Changes take about a minute')).toBeInTheDocument();
     expect(screen.getByText(/every path of nas\.example\.com/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Create host' }));
 
@@ -137,5 +138,45 @@ describe('HostForm', () => {
 
     expect(await screen.findByText('nas.example.com already has a DNS record')).toBeInTheDocument();
     expect(screen.getByText(/was not created by Burrow/)).toBeInTheDocument();
+  });
+});
+
+describe('accessChanged', () => {
+  const on = {
+    enabled: true,
+    emails: ['me@example.com'],
+    emailDomains: [],
+    sessionDuration: '24h',
+  } as const;
+  const priv = makeHost({ access: { ...on, emails: [...on.emails], emailDomains: [] } });
+  const pub = makeHost();
+
+  it('is true for a new private host, false for a new public one', () => {
+    expect(accessChanged(undefined, priv)).toBe(true);
+    expect(accessChanged(undefined, pub)).toBe(false);
+  });
+
+  it('is true when protection is turned on, off, or its rules change', () => {
+    expect(accessChanged(pub, priv)).toBe(true);
+    expect(accessChanged(priv, pub)).toBe(true);
+    expect(
+      accessChanged(
+        priv,
+        makeHost({ access: { ...on, emails: ['friend@example.net'], emailDomains: [] } }),
+      ),
+    ).toBe(true);
+    expect(
+      accessChanged(
+        priv,
+        makeHost({
+          access: { ...on, emails: [...on.emails], emailDomains: [], sessionDuration: '6h' },
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it('is false when only unrelated settings change', () => {
+    expect(accessChanged(priv, { ...priv, service: 'http://other:80' })).toBe(false);
+    expect(accessChanged(pub, { ...pub, service: 'http://other:80' })).toBe(false);
   });
 });

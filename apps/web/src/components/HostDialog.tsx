@@ -1,7 +1,7 @@
 import type { ProxyHost, Zone } from '@burrow/shared';
 import { useSaveHost } from '../api/queries';
 import { t } from '../i18n';
-import { HostForm } from './HostForm';
+import { accessChanged, HostForm } from './HostForm';
 import { Dialog } from './ui/Dialog';
 import { useToast } from './ui/Toast';
 
@@ -35,12 +35,13 @@ export function HostDialog({
         onCancel={onClose}
         onSubmit={async (input) => {
           const saved = await save.mutateAsync({ id: host?.id, input });
-          toast.show(
-            saved.sync.status === 'error'
-              ? t('host.savedWithError', { hostname: saved.hostname })
-              : t(host ? 'host.updated' : 'host.created', { hostname: saved.hostname }),
-            saved.sync.status === 'error' ? 'danger' : 'success',
-          );
+          const ok = saved.sync.status !== 'error';
+          const message = ok
+            ? t(host ? 'host.updated' : 'host.created', { hostname: saved.hostname })
+            : t('host.savedWithError', { hostname: saved.hostname });
+          // Cloudflare needs a moment before a new or changed Access app answers.
+          const delay = ok && accessChanged(host, saved) ? ` ${t('host.access.delayToast')}` : '';
+          toast.show(message + delay, ok ? 'success' : 'danger');
           onClose();
         }}
       />

@@ -247,6 +247,10 @@ export const en = {
   'host.access.duration.720h': '30 days',
   'host.access.wholeHostname':
     'Protection applies to every path of {hostname}. Burrow creates an Access application and policy named "[Burrow] {hostname}" in your Zero Trust dashboard; edit them in Burrow, not there.',
+  'host.access.delayTitle': 'Changes take about a minute',
+  'host.access.delayBody':
+    'Cloudflare needs a minute to apply a new or changed sign-in. Until then, visitors may see "Unable to find your Access application". Wait a moment and reload the page.',
+  'host.access.delayToast': 'Sign-in changes can take a minute to apply on Cloudflare.',
   'host.access.conflictTitle': '{hostname} is already protected by another Access application',
   'host.dnsConflictBody':
     'A DNS record with this name exists in Cloudflare and was not created by Burrow, so Burrow will not overwrite it. Delete or rename that record on the Cloudflare dashboard, or choose another subdomain.',

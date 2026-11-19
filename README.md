@@ -193,6 +193,9 @@ the application cannot be created, the host is not published.
   covers the hostname, Burrow refuses to protect it and tells you which one.
 - Change the settings in Burrow, not in the Zero Trust dashboard: the next
   sync puts Burrow's version back.
+- A new or changed protection takes about a minute to apply on Cloudflare.
+  Until then, visitors may see "Unable to find your Access application":
+  wait a moment and reload.
 
 ## Configuration
 
