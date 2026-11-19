@@ -1,6 +1,5 @@
 # Burrow: example deployment.
 #
-#   mkdir -p data && sudo chown 1000:1000 data   # the container runs as uid 1000
 #   docker compose up -d
 #   open http://<this-host>:8080 and create the admin account
 #
@@ -26,6 +25,10 @@ services:
 
     environment:
       TZ: Europe/Paris
+      # User and group ids Burrow runs as (default 1000). On start, Burrow
+      # makes ./data belong to them, so you never need to chown it yourself.
+      # PUID: 1000
+      # PGID: 1000
       # Optional. Key used to encrypt the Cloudflare API token at rest
       # (32+ random characters, e.g. `openssl rand -base64 48`). If unset, a
       # random key is generated once into /data/.secret. Setting it keeps the
@@ -46,6 +49,14 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    # Needed only at startup, to give ./data to PUID:PGID and switch to that
+    # user. Burrow itself (Node and cloudflared) runs with no capabilities.
+    # Alternatively, remove these three lines and set `user: "1000:1000"`,
+    # but then you must create ./data with the right owner yourself.
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
 
     # --- Reaching your services -------------------------------------------
     # Burrow (and cloudflared inside it) connects to the origin URLs you

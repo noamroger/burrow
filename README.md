@@ -194,9 +194,32 @@ optional:
 | `LOG_LEVEL`             | `info`        | `debug`, `info`, `warn` or `error`                                                                                                                                        |
 | `TRUST_PROXY`           | `false`       | Set to `true` if you put the UI behind another reverse proxy                                                                                                              |
 | `BURROW_SECURE_COOKIES` | `auto`        | `true` forces `Secure` cookies (UI served over HTTPS)                                                                                                                     |
+| `PUID` / `PGID`         | `1000`        | User and group ids Burrow runs as. On start, Burrow makes `/data` belong to them (you never need to `chown` it).                                                          |
 
 All data lives in `/data` (SQLite database and secret key). Back up this
 folder.
+
+<details>
+<summary><strong>Permissions on <code>/data</code>, <code>user:</code> and hardened setups</strong></summary>
+
+The container starts as root only long enough to make `/data` belong to
+`PUID:PGID` (1000:1000 by default), then switches to that user. Node and
+`cloudflared` never run as root. The ownership is only changed when it is
+wrong (for example the first time, when Docker creates `./data` as root), so
+normal restarts do not touch your files.
+
+- **Hardened setup with `cap_drop: [ALL]`:** also add
+  `cap_add: [CHOWN, SETUID, SETGID]`, as in the example
+  [`docker-compose.yml`](docker-compose.yml). These capabilities are only used
+  at startup; Burrow itself runs with none.
+- **Prefer to start directly as a non-root user** (`user: "1000:1000"`)?
+  That works too, but then Burrow cannot fix the owner: create the folder
+  yourself with `mkdir data && sudo chown 1000:1000 data`.
+- **NFS share with root squashing:** the owner cannot be changed from the
+  container. Set `PUID`/`PGID` to the owner of the share, or `chown` it on
+  the server.
+
+</details>
 
 ## Networking FAQ
 
@@ -228,6 +251,7 @@ networks:
 Service URL in Burrow: `http://whoami:80`. If the service is in another
 compose project, create the network once with `docker network create proxy`
 and declare it as `external: true` in both files.
+
 </details>
 
 <details>
@@ -235,6 +259,7 @@ and declare it as `external: true` in both files.
 
 Use its LAN IP, for example `http://192.168.1.20:8080`. Docker containers
 can reach the LAN by default.
+
 </details>
 
 <details>
@@ -257,6 +282,7 @@ The container must be able to reach the Tailscale IPs (`100.x.y.z`). The
 simplest way is `network_mode: host` on a machine where Tailscale is
 installed, then use `http://100.x.y.z:<port>`. Another way is to run a
 Tailscale sidecar container and use `network_mode: service:tailscale`.
+
 </details>
 
 <details>
@@ -265,6 +291,7 @@ Tailscale sidecar container and use `network_mode: service:tailscale`.
 Use `https://...` as the service URL and enable **No TLS Verify** in the
 advanced options. If the certificate is valid for another name, set
 **Origin Server Name** to that name instead.
+
 </details>
 
 <details>
@@ -272,6 +299,7 @@ advanced options. If the certificate is valid for another name, set
 
 Set **HTTP Host Header** in the advanced options (for example
 `app.local`).
+
 </details>
 
 <details>
@@ -280,6 +308,7 @@ Set **HTTP Host Header** in the advanced options (for example
 A DNS record with that name already exists and Burrow did not create it.
 Burrow never overwrites your records. Delete or rename the record in the
 Cloudflare dashboard, then click **Sync now**.
+
 </details>
 
 <details>
@@ -288,6 +317,7 @@ Cloudflare dashboard, then click **Sync now**.
 It is safer to keep it on your LAN or behind a VPN like Tailscale. If you
 publish it, tick **Require sign-in (Cloudflare Access)** on that host and
 allow only your own email.
+
 </details>
 
 ## How it works
