@@ -5,3 +5,7 @@ onlyBuiltDependencies:
   - esbuild
 ignoredBuiltDependencies:
   - better-sqlite3
+overrides:
+  # drizzle-kit (dev only) still pulls esbuild 0.18 through the deprecated
+  # @esbuild-kit loader; force a release with the dev-server fix (GHSA-67mh-4wv8-2f99).
+  '@esbuild-kit/core-utils>esbuild': ^0.25.12

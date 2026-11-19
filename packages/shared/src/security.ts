@@ -50,14 +50,14 @@ export type PasskeyLoginOptionsInput = z.infer<typeof passkeyLoginOptionsInputSc
 export const passkeyOptionsSchema = z.object({
   /** Pass back with the browser's answer. */
   challengeId: z.string(),
-  options: z.record(z.unknown()),
+  options: z.record(z.string(), z.unknown()),
 });
 export type PasskeyOptions = z.infer<typeof passkeyOptionsSchema>;
 
 /** POST /api/auth/passkey/verify (public, rate limited) -> 200 MeResponse */
 export const passkeyLoginVerifySchema = z.object({
   challengeId: z.string().min(1).max(128),
-  response: z.record(z.unknown()),
+  response: z.record(z.string(), z.unknown()),
 });
 export type PasskeyLoginVerifyInput = z.infer<typeof passkeyLoginVerifySchema>;
 
@@ -117,7 +117,7 @@ export const passkeyNameSchema = z.string().trim().min(1).max(64);
 export const registerPasskeySchema = z.object({
   name: passkeyNameSchema,
   challengeId: z.string().min(1).max(128),
-  response: z.record(z.unknown()),
+  response: z.record(z.string(), z.unknown()),
 });
 export type RegisterPasskeyInput = z.infer<typeof registerPasskeySchema>;
 

@@ -30,7 +30,7 @@ const configSchema = z.object({
   CLOUDFLARED_PATH: z.string().min(1).default('cloudflared'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   BURROW_SECURE_COOKIES: z.enum(['auto', 'true', 'false']).default('auto'),
-  TRUST_PROXY: trustProxy.default('false'),
+  TRUST_PROXY: trustProxy.prefault('false'),
   CLOUDFLARE_API_BASE: z
     .string()
     .url()
