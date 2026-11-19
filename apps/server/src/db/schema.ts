@@ -4,7 +4,7 @@
  *
  * Timestamps are ISO 8601 strings; booleans are stored as 0/1 integers.
  */
-import type { MaintenancePage } from '@burrow/shared';
+import type { HostHome, MaintenancePage, NotificationEvent } from '@burrow/shared';
 import { sql } from 'drizzle-orm';
 import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
@@ -141,6 +141,13 @@ export const proxyHosts = sqliteTable(
     maintenanceUntil: text('maintenance_until'),
     /** Page for this host only (MaintenancePage JSON); null = default page. */
     maintenancePage: text('maintenance_page', { mode: 'json' }).$type<MaintenancePage | null>(),
+    /** Secret token of the public status badge (`/api/badge/<token>`); null = no badge. */
+    badgeToken: text('badge_token').unique(),
+    /** Homepage tile (HostHome JSON). */
+    home: text('home', { mode: 'json' })
+      .$type<HostHome>()
+      .notNull()
+      .default(sql`'{"visible":true,"title":"","description":"","icon":"","group":""}'`),
     dnsRecordId: text('dns_record_id'),
     syncStatus: text('sync_status', { enum: ['pending', 'synced', 'error', 'drift'] })
       .notNull()
@@ -155,6 +162,42 @@ export const proxyHosts = sqliteTable(
     index('proxy_hosts_zone_idx').on(t.zoneId),
   ],
 );
+
+/**
+ * Health probe results, kept `MONITORING_RETENTION_DAYS` for uptime history.
+ * `checkedAt` is epoch milliseconds (not ISO) so ranges and buckets are cheap.
+ */
+export const healthChecks = sqliteTable(
+  'health_checks',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    hostId: integer('host_id')
+      .notNull()
+      .references(() => proxyHosts.id, { onDelete: 'cascade' }),
+    checkedAt: integer('checked_at').notNull(),
+    up: integer('up', { mode: 'boolean' }).notNull(),
+    latencyMs: integer('latency_ms'),
+    statusCode: integer('status_code'),
+    error: text('error'),
+  },
+  (t) => [index('health_checks_host_time_idx').on(t.hostId, t.checkedAt)],
+);
+
+/** Where notifications go. The whole config is encrypted (it holds webhook URLs and tokens). */
+export const notificationChannels = sqliteTable('notification_channels', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  name: text('name').notNull(),
+  type: text('type', { enum: ['discord', 'ntfy', 'webhook'] }).notNull(),
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+  events: text('events', { mode: 'json' })
+    .$type<NotificationEvent[]>()
+    .notNull()
+    .default(sql`'[]'`),
+  configEnc: text('config_enc').notNull(),
+  lastSentAt: text('last_sent_at'),
+  lastError: text('last_error'),
+  createdAt: timestamp('created_at'),
+});
 
 /** Who changed what. Never contains secrets. */
 export const auditLog = sqliteTable('audit_log', {
@@ -172,3 +215,5 @@ export type ZoneRow = typeof zones.$inferSelect;
 export type TunnelRow = typeof tunnels.$inferSelect;
 export type ProxyHostRow = typeof proxyHosts.$inferSelect;
 export type NewProxyHostRow = typeof proxyHosts.$inferInsert;
+export type HealthCheckRow = typeof healthChecks.$inferSelect;
+export type NotificationChannelRow = typeof notificationChannels.$inferSelect;

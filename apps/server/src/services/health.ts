@@ -1,4 +1,5 @@
 import type { OriginHealth } from '@burrow/shared';
+import { EventEmitter } from 'node:events';
 import { connect } from 'node:net';
 import { Agent, request } from 'undici';
 import { errorMessage } from '../lib/errors.js';
@@ -153,11 +154,16 @@ export async function probeOrigin(target: ProbeTarget, timeoutMs = 5_000): Promi
   }
 }
 
-/** Caches the last probe result of each host (in memory only). */
-export class HealthService {
+/**
+ * Caches the last probe result of each host (in memory). Event `result`
+ * (host id, result) after every probe: the monitoring history listens to it.
+ */
+export class HealthService extends EventEmitter<{ result: [number, OriginHealth] }> {
   private readonly cache = new Map<number, OriginHealth>();
 
-  constructor(private readonly timeoutMs = 5_000) {}
+  constructor(private readonly timeoutMs = 5_000) {
+    super();
+  }
 
   get(hostId: number): OriginHealth {
     return this.cache.get(hostId) ?? UNKNOWN_HEALTH;
@@ -167,6 +173,7 @@ export class HealthService {
   async check(hostId: number, target: ProbeTarget): Promise<OriginHealth> {
     const result = await probeOrigin(target, this.timeoutMs);
     this.cache.set(hostId, result);
+    this.emit('result', hostId, result);
     return result;
   }
 

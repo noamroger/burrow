@@ -444,6 +444,148 @@ const ops: Operation[] = [
     body: s.configImportSchema,
     response: s.configImportReportSchema,
   },
+  /* ---- monitoring ---- */
+  {
+    method: 'get',
+    path: '/api/monitoring',
+    tag: 'Monitoring',
+    summary: 'Uptime, response time and latest probes of every host',
+    response: s.monitoringOverviewSchema,
+  },
+  {
+    method: 'get',
+    path: '/api/monitoring/hosts/{id}',
+    tag: 'Monitoring',
+    summary: 'History of one host: uptime, response time buckets and incidents',
+    query: {
+      range: { schema: s.monitoringRangeSchema, description: '24h (default), 7d or 30d' },
+    },
+    response: s.hostMonitorDetailSchema,
+  },
+  {
+    method: 'post',
+    path: '/api/monitoring/hosts/{id}/badge',
+    tag: 'Monitoring',
+    summary: 'Turn on the public status badge, or replace its secret URL',
+    response: s.badgeResponseSchema,
+  },
+  {
+    method: 'delete',
+    path: '/api/monitoring/hosts/{id}/badge',
+    tag: 'Monitoring',
+    summary: 'Turn off the public status badge',
+    response: null,
+    status: 204,
+  },
+  {
+    method: 'get',
+    path: '/api/badge/{token}',
+    tag: 'Monitoring',
+    summary: 'Public status badge (SVG image)',
+    description:
+      'Returns `image/svg+xml`, embeddable from any site. `.svg` may be appended to the token.',
+    query: {
+      label: { schema: z.string().max(40), description: 'Text on the left (default: hostname)' },
+      theme: { schema: z.enum(['soil', 'chalk']), description: 'soil (dark, default) or chalk' },
+    },
+    public: true,
+  },
+  /* ---- homepage ---- */
+  {
+    method: 'get',
+    path: '/api/homepage/settings',
+    tag: 'Homepage',
+    summary: 'Homepage settings',
+    response: s.homepageSettingsSchema,
+  },
+  {
+    method: 'put',
+    path: '/api/homepage/settings',
+    tag: 'Homepage',
+    summary: 'Change the homepage settings (on/off, public or private, title, public hostname)',
+    body: s.homepageSettingsSchema,
+    response: s.homepageSettingsSchema,
+  },
+  {
+    method: 'get',
+    path: '/api/home',
+    tag: 'Homepage',
+    summary: 'The homepage: services with their public link, icon and status',
+    description:
+      'Public when the homepage is public, otherwise needs a session or a token. 404 when the homepage is off. Never contains origin service URLs.',
+    response: s.homeDataSchema,
+    public: true,
+  },
+  {
+    method: 'get',
+    path: '/api/home/icons/{id}',
+    tag: 'Homepage',
+    summary: 'Icon of a service on the homepage (image)',
+    description: 'Same access rules as `GET /api/home`. 404 when the service has no icon.',
+    public: true,
+  },
+  /* ---- traffic ---- */
+  {
+    method: 'get',
+    path: '/api/traffic',
+    tag: 'Traffic',
+    summary: 'Requests and bandwidth of every host over 24 hours (Cloudflare Analytics)',
+    description:
+      'Needs the optional token permission Zone › Analytics › Read; `error` says why when unavailable.',
+    response: s.trafficOverviewSchema,
+  },
+  {
+    method: 'get',
+    path: '/api/traffic/hosts/{id}',
+    tag: 'Traffic',
+    summary: 'Traffic of one host: requests, bandwidth, status codes, countries',
+    query: {
+      range: { schema: s.monitoringRangeSchema, description: '24h (default), 7d or 30d' },
+    },
+    response: s.hostTrafficSchema,
+  },
+  /* ---- notifications ---- */
+  {
+    method: 'get',
+    path: '/api/notifications',
+    tag: 'Notifications',
+    summary: 'Notification channels (secrets are never returned)',
+    response: s.channelListSchema,
+  },
+  {
+    method: 'post',
+    path: '/api/notifications/channels',
+    tag: 'Notifications',
+    summary: 'Add a Discord, ntfy or webhook channel',
+    description:
+      'Generic webhooks receive `POST` requests with a JSON body (see WebhookPayload) and the `X-Burrow-Event` header; with a secret, `X-Burrow-Signature: sha256=<hex HMAC-SHA256 of the body>`.',
+    body: s.channelInputSchema,
+    response: s.channelSchema,
+    status: 201,
+  },
+  {
+    method: 'put',
+    path: '/api/notifications/channels/{id}',
+    tag: 'Notifications',
+    summary: 'Update a channel (omitted secrets are kept)',
+    body: s.channelInputSchema,
+    response: s.channelSchema,
+  },
+  {
+    method: 'delete',
+    path: '/api/notifications/channels/{id}',
+    tag: 'Notifications',
+    summary: 'Delete a channel',
+    response: null,
+    status: 204,
+  },
+  {
+    method: 'post',
+    path: '/api/notifications/channels/{id}/test',
+    tag: 'Notifications',
+    summary: 'Send a test message (200 even when delivery failed)',
+    response: s.channelTestResultSchema,
+  },
   /* ---- health ---- */
   {
     method: 'get',
@@ -474,6 +616,9 @@ export function buildOpenApi(version: string): Record<string, unknown> {
   for (const op of ops) {
     const parameters: unknown[] = [];
     if (op.path.includes('{id}')) parameters.push(id);
+    if (op.path.includes('{token}')) {
+      parameters.push({ name: 'token', in: 'path', required: true, schema: { type: 'string' } });
+    }
     if (op.path.includes('{name}')) {
       parameters.push({ name: 'name', in: 'path', required: true, schema: { type: 'string' } });
     }

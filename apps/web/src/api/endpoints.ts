@@ -3,10 +3,23 @@
  * See packages/shared/src/index.ts for the route documentation.
  */
 import {
+  homeDataSchema,
+  homepageSettingsSchema,
+  type HomepageSettingsInput,
   apiTokenListSchema,
   availableTunnelListSchema,
   configImportReportSchema,
   backupRunSchema,
+  badgeResponseSchema,
+  hostTrafficSchema,
+  trafficOverviewSchema,
+  channelListSchema,
+  channelSchema,
+  channelTestResultSchema,
+  type ChannelInput,
+  hostMonitorDetailSchema,
+  monitoringOverviewSchema,
+  type MonitoringRange,
   backupStatusSchema,
   type BackupSettingsInput,
   driftReportSchema,
@@ -155,6 +168,38 @@ export const backupsApi = {
   run: () => api.post('/backups', undefined, backupRunSchema),
   /** Downloaded by the browser (GET with the session cookie). */
   downloadUrl: (name: string) => `/api/backups/${encodeURIComponent(name)}`,
+};
+
+export const monitoringApi = {
+  overview: () => api.get('/monitoring', monitoringOverviewSchema),
+  host: (id: number, range: MonitoringRange) =>
+    api.get(`/monitoring/hosts/${id}?range=${range}`, hostMonitorDetailSchema),
+  enableBadge: (id: number) =>
+    api.post(`/monitoring/hosts/${id}/badge`, undefined, badgeResponseSchema),
+  disableBadge: (id: number) => api.delete(`/monitoring/hosts/${id}/badge`),
+};
+
+export const trafficApi = {
+  overview: () => api.get('/traffic', trafficOverviewSchema),
+  host: (id: number, range: MonitoringRange) =>
+    api.get(`/traffic/hosts/${id}?range=${range}`, hostTrafficSchema),
+};
+
+export const homepageApi = {
+  settings: () => api.get('/homepage/settings', homepageSettingsSchema),
+  saveSettings: (input: HomepageSettingsInput) =>
+    api.put('/homepage/settings', input, homepageSettingsSchema),
+  data: () => api.get('/home', homeDataSchema),
+};
+
+export const notificationsApi = {
+  list: () => api.get('/notifications', channelListSchema),
+  create: (input: ChannelInput) => api.post('/notifications/channels', input, channelSchema),
+  update: (id: number, input: ChannelInput) =>
+    api.put(`/notifications/channels/${id}`, input, channelSchema),
+  remove: (id: number) => api.delete(`/notifications/channels/${id}`),
+  test: (id: number) =>
+    api.post(`/notifications/channels/${id}/test`, undefined, channelTestResultSchema),
 };
 
 export const hostsApi = {

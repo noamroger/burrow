@@ -46,7 +46,8 @@ type HostValues = Pick<
   | 'accessSessionDuration'
   | 'accessBrowserRendering'
   | 'template'
->;
+> &
+  Partial<Pick<ProxyHostRow, 'home'>>;
 
 /** JSON with sorted object keys, to compare values regardless of key order. */
 function stable(value: unknown): string {
@@ -135,6 +136,7 @@ export class ConfigService {
               browserRendering: h.accessBrowserRendering ?? null,
             },
             template: h.template,
+            home: h.home,
           };
         }),
     };
@@ -273,6 +275,7 @@ export class ConfigService {
         accessSessionDuration: h.access.sessionDuration,
         accessBrowserRendering: h.access.browserRendering,
         template: findTemplate(h.template)?.id ?? null,
+        ...(h.home ? { home: h.home } : {}),
       };
       const before = existing.get(key);
       if (before?.source === 'docker') {

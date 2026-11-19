@@ -17,9 +17,13 @@ import { DockerClient, type DockerApi } from './docker/client.js';
 import { defaultSelfHostname, DockerDiscoveryService } from './docker/discovery.js';
 import { DriftService } from './services/drift.js';
 import { HealthService } from './services/health.js';
+import { HomepageService } from './services/homepage.js';
 import { HostService } from './services/hosts.js';
 import { LogBuffer } from './services/log-buffer.js';
 import { MaintenanceService } from './services/maintenance.js';
+import { MonitoringService } from './services/monitoring.js';
+import { NotificationService } from './services/notifications.js';
+import { TrafficService } from './services/traffic.js';
 import { Reconciler } from './services/reconciler.js';
 import type { SupervisorOptions } from './services/supervisor.js';
 import { SupervisorPool } from './services/supervisors.js';
@@ -53,6 +57,10 @@ export interface AppContext {
   backups: BackupService;
   docker: DockerDiscoveryService;
   maintenance: MaintenanceService;
+  monitoring: MonitoringService;
+  notifications: NotificationService;
+  traffic: TrafficService;
+  homepage: HomepageService;
   lifecycle: Lifecycle;
 }
 
@@ -65,6 +73,12 @@ export interface ContextOverrides {
   /** Fake Docker API for discovery tests. */
   docker?: DockerApi;
   dockerSelfHostname?: string;
+  /** Failed probes in a row before a host counts as down. */
+  failuresBeforeDown?: number;
+  /** Time a tunnel may stay disconnected before it is reported down. */
+  tunnelGraceMs?: number;
+  /** Where homepage icons are downloaded from (Dashboard Icons). */
+  iconBaseUrl?: string;
 }
 
 /** Version from package.json (works from both `src/` and `dist/`). */
@@ -196,6 +210,39 @@ export function createContext(
       listen: config.maintenanceListen,
       origin: config.maintenanceOrigin,
     }),
+    monitoring: new MonitoringService({
+      db,
+      sqlite,
+      health,
+      logger: logger.child({ component: 'monitoring' }),
+      retentionDays: config.monitoringRetentionDays,
+      intervalSeconds: config.healthcheckIntervalSeconds,
+      failuresBeforeDown: overrides.failuresBeforeDown,
+    }),
+    notifications: new NotificationService({
+      db,
+      box,
+      logger: logger.child({ component: 'notifications' }),
+      fetch: overrides.fetch,
+      tunnelGraceMs: overrides.tunnelGraceMs,
+      tunnelState: (id) => supervisors.status(id).state,
+      tunnelName: (id) => tunnels.find(id)?.name,
+    }),
+    traffic: new TrafficService({
+      db,
+      cloudflare,
+      logger: logger.child({ component: 'traffic' }),
+    }),
+    homepage: new HomepageService({
+      db,
+      settings,
+      health,
+      audit,
+      logger: logger.child({ component: 'homepage' }),
+      cacheDir: join(config.dataDir, 'icons'),
+      fetch: overrides.fetch,
+      iconBaseUrl: overrides.iconBaseUrl,
+    }),
   } as Omit<AppContext, 'lifecycle'> as AppContext;
   ctx.lifecycle = new Lifecycle(ctx);
   return ctx;
@@ -219,6 +266,12 @@ export class Lifecycle {
     ctx.tunnels.on('listChanged', () => {
       void ctx.supervisors.sync();
     });
+    // Notifications: tunnels, hosts, drift and backups.
+    ctx.supervisors.on('state', (id, status) => ctx.notifications.onTunnelState(id, status));
+    ctx.monitoring.on('down', (e) => void ctx.notifications.onHostDown(e));
+    ctx.monitoring.on('up', (e) => void ctx.notifications.onHostUp(e));
+    ctx.drift.on('detected', (report) => void ctx.notifications.onDrift(report));
+    ctx.backups.on('failed', (run) => void ctx.notifications.onBackupFailed(run));
   }
 
   /** Called once after the HTTP server listens. Never throws. */
@@ -250,6 +303,8 @@ export class Lifecycle {
     void ctx.docker.scan();
     // Backups: check every 5 minutes whether one is due (the schedule is in hours).
     this.every(300, () => ctx.backups.runIfDue());
+    // Uptime history: drop what is older than the retention, every hour.
+    this.every(3600, async () => ctx.monitoring.prune());
     if (ctx.config.healthcheckIntervalSeconds > 0) {
       this.every(ctx.config.healthcheckIntervalSeconds, () => ctx.hosts.checkAll());
       void ctx.hosts.checkAll().catch(() => undefined);
@@ -260,6 +315,7 @@ export class Lifecycle {
   async stop(): Promise<void> {
     for (const t of this.timers) clearInterval(t);
     this.timers = [];
+    this.ctx.notifications.stop();
     await this.ctx.supervisors.stopAll();
     await this.ctx.maintenance.stop();
   }

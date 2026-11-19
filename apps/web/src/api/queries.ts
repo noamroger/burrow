@@ -3,7 +3,10 @@
  * hooks, which share caching, polling and invalidation rules.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { isApiError } from './client';
 import type {
+  ChannelInput,
+  MonitoringRange,
   OriginHealth,
   ProxyHost,
   ProxyHostInput,
@@ -25,6 +28,10 @@ import {
   dockerApi,
   maintenanceApi,
   backupsApi,
+  monitoringApi,
+  notificationsApi,
+  trafficApi,
+  homepageApi,
   zonesApi,
 } from './endpoints';
 
@@ -46,6 +53,13 @@ export const queryKeys = {
   backups: ['backups'] as const,
   docker: ['docker'] as const,
   maintenancePage: ['maintenance', 'page'] as const,
+  monitoring: ['monitoring'] as const,
+  notifications: ['notifications'] as const,
+  traffic: ['traffic'] as const,
+  homepageSettings: ['homepage', 'settings'] as const,
+  home: ['home'] as const,
+  trafficHost: (id: number, range: MonitoringRange) => ['traffic', id, range] as const,
+  monitoringHost: (id: number, range: MonitoringRange) => ['monitoring', id, range] as const,
 };
 
 /** Polling intervals (ms). */
@@ -352,6 +366,121 @@ export function useRunBackup() {
   return useMutation({
     mutationFn: backupsApi.run,
     onSettled: () => void qc.invalidateQueries({ queryKey: queryKeys.backups }),
+  });
+}
+
+/* ------------------------------ monitoring ---------------------------- */
+
+export function useMonitoring() {
+  return useQuery({
+    queryKey: queryKeys.monitoring,
+    queryFn: monitoringApi.overview,
+    refetchInterval: 30_000,
+  });
+}
+
+export function useHostMonitoring(id: number, range: MonitoringRange) {
+  return useQuery({
+    queryKey: queryKeys.monitoringHost(id, range),
+    queryFn: () => monitoringApi.host(id, range),
+    refetchInterval: 60_000,
+    placeholderData: (previous) => previous,
+  });
+}
+
+export function useBadge(id: number) {
+  const qc = useQueryClient();
+  const invalidate = () => qc.invalidateQueries({ queryKey: queryKeys.monitoring });
+  return {
+    enable: useMutation({ mutationFn: () => monitoringApi.enableBadge(id), onSuccess: invalidate }),
+    disable: useMutation({
+      mutationFn: () => monitoringApi.disableBadge(id),
+      onSuccess: invalidate,
+    }),
+  };
+}
+
+/* ------------------------------- traffic ------------------------------ */
+
+export function useTrafficOverview() {
+  return useQuery({
+    queryKey: queryKeys.traffic,
+    queryFn: trafficApi.overview,
+    staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
+  });
+}
+
+export function useHostTraffic(id: number, range: MonitoringRange) {
+  return useQuery({
+    queryKey: queryKeys.trafficHost(id, range),
+    queryFn: () => trafficApi.host(id, range),
+    staleTime: 5 * 60_000,
+    // A missing permission will not fix itself: do not retry it.
+    retry: (count, error) => count < 1 && !isApiError(error, 'CLOUDFLARE_PERMISSION_MISSING'),
+    placeholderData: (previous) => (previous?.hostId === id ? previous : undefined),
+  });
+}
+
+/* ------------------------------- homepage ----------------------------- */
+
+export function useHomepageSettings() {
+  return useQuery({ queryKey: queryKeys.homepageSettings, queryFn: homepageApi.settings });
+}
+
+export function useSaveHomepageSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: homepageApi.saveSettings,
+    onSuccess: (settings) => {
+      qc.setQueryData(queryKeys.homepageSettings, settings);
+      void qc.invalidateQueries({ queryKey: queryKeys.home });
+    },
+  });
+}
+
+/** The homepage itself (public or for the signed-in admin). */
+export function useHome() {
+  return useQuery({
+    queryKey: queryKeys.home,
+    queryFn: homepageApi.data,
+    refetchInterval: 60_000,
+    retry: (count, error) => count < 2 && (!isApiError(error) || error.status >= 500),
+  });
+}
+
+/* ---------------------------- notifications --------------------------- */
+
+export function useNotificationChannels() {
+  return useQuery({
+    queryKey: queryKeys.notifications,
+    queryFn: notificationsApi.list,
+    select: (d) => d.channels,
+  });
+}
+
+export function useSaveChannel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: number | null; input: ChannelInput }) =>
+      id === null ? notificationsApi.create(input) : notificationsApi.update(id, input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.notifications }),
+  });
+}
+
+export function useDeleteChannel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: notificationsApi.remove,
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.notifications }),
+  });
+}
+
+export function useTestChannel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: notificationsApi.test,
+    onSettled: () => qc.invalidateQueries({ queryKey: queryKeys.notifications }),
   });
 }
 

@@ -38,6 +38,8 @@ const configSchema = z.object({
     .transform((v) => v.replace(/\/+$/, '')),
   RECONCILE_INTERVAL_SECONDS: z.coerce.number().int().min(0).default(300),
   HEALTHCHECK_INTERVAL_SECONDS: z.coerce.number().int().min(0).default(60),
+  /** Days of health check history kept for uptime statistics. */
+  MONITORING_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(30),
   /** Where local backups are written. Default: `<DATA_DIR>/backups`. */
   BACKUP_DIR: z.string().optional(),
   WEB_DIST_DIR: z.string().min(1).default(resolve(here, '../../web/dist')),
@@ -75,6 +77,7 @@ export interface Config {
   cloudflareApiBase: string;
   reconcileIntervalSeconds: number;
   healthcheckIntervalSeconds: number;
+  monitoringRetentionDays: number;
   backupDir: string;
   dockerHost: string;
   dockerScanIntervalSeconds: number;
@@ -109,6 +112,7 @@ export function loadConfig(env: NodeJS.ProcessEnv | ConfigInput = process.env): 
     cloudflareApiBase: c.CLOUDFLARE_API_BASE,
     reconcileIntervalSeconds: c.RECONCILE_INTERVAL_SECONDS,
     healthcheckIntervalSeconds: c.HEALTHCHECK_INTERVAL_SECONDS,
+    monitoringRetentionDays: c.MONITORING_RETENTION_DAYS,
     backupDir: resolve(c.BACKUP_DIR || join(c.DATA_DIR, 'backups')),
     dockerHost: c.DOCKER_HOST,
     dockerScanIntervalSeconds: c.DOCKER_SCAN_INTERVAL_SECONDS,
