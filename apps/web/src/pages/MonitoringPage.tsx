@@ -1,7 +1,7 @@
 /** Monitoring: every host with its status, latest probes and uptime. */
 import { Link } from 'react-router';
 import type { HostMonitorSummary } from '@burrow/shared';
-import { useMonitoring } from '../api/queries';
+import { useMonitoring, useTrafficOverview } from '../api/queries';
 import { EmptyState } from '../components/EmptyState';
 import { Heartbeats, formatPercent, uptimeTone } from '../components/monitoring/charts';
 import { PageHeader } from '../components/PageHeader';
@@ -13,7 +13,7 @@ import { useNow } from '../hooks/useNow';
 import { t } from '../i18n';
 import { cn } from '../lib/cn';
 import { errorMessage } from '../lib/errors';
-import { formatUptime } from '../lib/format';
+import { formatCount, formatUptime } from '../lib/format';
 
 const STATE_TONE: Record<HostMonitorSummary['state'], Tone> = {
   up: 'success',
@@ -30,6 +30,11 @@ const UPTIME_TEXT = {
 
 export function MonitoringPage() {
   const monitoring = useMonitoring();
+  // Traffic is optional (needs Zone › Analytics › Read): the column only shows when it works.
+  const traffic = useTrafficOverview();
+  const requests = traffic.data?.error
+    ? null
+    : new Map(traffic.data?.hosts.map((h) => [h.hostId, h.requests]));
   const data = monitoring.data;
   const hosts = data?.hosts ?? [];
   const down = hosts.filter((h) => h.state === 'down').length;
@@ -76,7 +81,11 @@ export function MonitoringPage() {
         <Card className="overflow-hidden">
           <ul className="divide-y divide-border">
             {hosts.map((h) => (
-              <MonitorRow key={h.hostId} host={h} />
+              <MonitorRow
+                key={h.hostId}
+                host={h}
+                requests={requests ? (requests.get(h.hostId) ?? null) : undefined}
+              />
             ))}
           </ul>
         </Card>
@@ -85,7 +94,14 @@ export function MonitoringPage() {
   );
 }
 
-function MonitorRow({ host }: { host: HostMonitorSummary }) {
+function MonitorRow({
+  host,
+  requests,
+}: {
+  host: HostMonitorSummary;
+  /** Requests over 24 hours; undefined when traffic statistics are unavailable. */
+  requests?: number | null;
+}) {
   const now = useNow(30_000);
   const name = host.hostname + host.path;
   return (
@@ -113,6 +129,14 @@ function MonitorRow({ host }: { host: HostMonitorSummary }) {
         </div>
         <Heartbeats beats={host.heartbeats} slots={40} className="md:max-w-md" />
         <dl className="flex gap-5 text-right text-xs">
+          {requests !== undefined ? (
+            <div className="min-w-14">
+              <dt className="text-fg-muted">{t('monitoring.requests24h')}</dt>
+              <dd className="font-mono text-sm font-semibold text-fg tabular-nums">
+                {requests === null ? '—' : formatCount(requests)}
+              </dd>
+            </div>
+          ) : null}
           {(
             [
               ['24h', host.uptime.h24],

@@ -7,8 +7,11 @@
  * relies on; it is not a full emulator.
  *
  * Tokens: any token of 20+ characters is accepted, except tokens containing
- * `invalid` (401), `noperm` (403 on tunnel endpoints) or `noaccess` (403 on
- * Access endpoints).
+ * `invalid` (401), `noperm` (403 on tunnel endpoints), `noaccess` (403 on
+ * Access endpoints) or `noanalytics` (GraphQL authorization error).
+ *
+ * `POST /graphql` answers the few Analytics queries Burrow sends with
+ * deterministic, made-up traffic (a daily wave per hostname).
  */
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
@@ -238,6 +241,11 @@ export class MockCloudflare {
         s.zones.map((z) => ({ ...z, status: 'active', account: s.accounts[0] })),
         q,
       );
+    }
+
+    /* ---------------- analytics (GraphQL) ---------------- */
+    if (method === 'POST' && path === '/graphql') {
+      return send(res, 200, mockAnalytics(token, body as GraphqlBody | undefined, s.zones));
     }
 
     /* ---------------- tunnels ---------------- */
@@ -612,4 +620,89 @@ async function readJson(req: IncomingMessage): Promise<unknown> {
   } catch {
     return undefined;
   }
+}
+
+interface GraphqlBody {
+  query?: string;
+  variables?: { zoneTag?: string; start?: string; end?: string };
+}
+
+/** Requests of a hostname during one hour: stable for a given name and hour. */
+function hourlyRequests(host: string, hour: number): number {
+  let h = 0;
+  for (const c of host) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  const base = 20 + (h % 60);
+  const wave = Math.sin(((hour % 24) / 24) * Math.PI * 2);
+  return Math.max(0, Math.round(base * (1 + 0.6 * wave)));
+}
+
+/** Fake answers to the GraphQL Analytics queries of Burrow (see services/traffic.ts). */
+function mockAnalytics(token: string, body: GraphqlBody | undefined, zones: MockZone[]) {
+  if (token.includes('noanalytics')) {
+    return {
+      data: null,
+      errors: [{ message: 'not authorized for that zone', extensions: { code: 'authz' } }],
+    };
+  }
+  const query = body?.query ?? '';
+  const v = body?.variables ?? {};
+  if (!zones.some((z) => z.id === v.zoneTag))
+    return { data: { viewer: { zones: [] } }, errors: null };
+  const HOUR = 3_600_000;
+  const start = Math.floor(Date.parse(v.start ?? '') / HOUR);
+  const end = Math.ceil(Date.parse(v.end ?? '') / HOUR);
+  const total = (host: string) => {
+    let n = 0;
+    for (let hr = start; hr < end; hr++) n += hourlyRequests(host, hr);
+    return n;
+  };
+  const zone: Record<string, unknown[]> = {};
+  const host = /clientRequestHTTPHost:\s*"([^"]+)"/.exec(query)?.[1];
+  if (host && /series:/.test(query)) {
+    const daily = /ts:\s*date\b/.test(query);
+    const groups = new Map<string, number>();
+    for (let hr = start; hr < end; hr++) {
+      const iso = new Date(hr * HOUR).toISOString();
+      const key = daily ? iso.slice(0, 10) : `${iso.slice(0, 13)}:00:00Z`;
+      groups.set(key, (groups.get(key) ?? 0) + hourlyRequests(host, hr));
+    }
+    zone.series = [...groups].map(([ts, count]) => ({
+      count,
+      sum: { edgeResponseBytes: count * 24_000, visits: Math.round(count * 0.3) },
+      dimensions: { ts },
+    }));
+    const n = total(host);
+    zone.statuses = [
+      [200, 0.86],
+      [304, 0.07],
+      [404, 0.05],
+      [502, 0.02],
+    ].map(([status, share]) => ({
+      count: Math.round(n * share!),
+      dimensions: { edgeResponseStatus: status },
+    }));
+    zone.countries = [
+      ['FR', 0.52],
+      ['US', 0.2],
+      ['DE', 0.12],
+      ['GB', 0.08],
+      ['CA', 0.04],
+    ].map(([country, share]) => ({
+      count: Math.round(n * (share as number)),
+      dimensions: { clientCountryName: country },
+    }));
+  }
+  const list = /clientRequestHTTPHost_in:\s*(\[[^\]]*\])/.exec(query)?.[1];
+  if (list) {
+    zone.hosts = (JSON.parse(list) as string[]).map((name) => {
+      const count = total(name);
+      return {
+        count,
+        sum: { edgeResponseBytes: count * 24_000 },
+        dimensions: { clientRequestHTTPHost: name },
+      };
+    });
+  }
+  if (Object.keys(zone).length === 0) zone.httpRequestsAdaptiveGroups = [{ count: 1 }];
+  return { data: { viewer: { zones: [zone] } }, errors: null };
 }

@@ -25,6 +25,7 @@ import { logRoutes } from './routes/logs.js';
 import { maintenanceRoutes } from './routes/maintenance.js';
 import { badgeRoutes, monitoringRoutes } from './routes/monitoring.js';
 import { notificationRoutes } from './routes/notifications.js';
+import { trafficRoutes } from './routes/traffic.js';
 import { tokenRoutes } from './routes/tokens.js';
 import { tunnelRoutes } from './routes/tunnel.js';
 
@@ -159,6 +160,7 @@ export async function buildApp(
     await maintenanceRoutes(scope, ctx);
     await monitoringRoutes(scope, ctx);
     await notificationRoutes(scope, ctx);
+    await trafficRoutes(scope, ctx);
     await tokenRoutes(scope, ctx);
   });
 

@@ -29,6 +29,7 @@ export const PERMISSION_NAMES = {
   dns: 'Zone › DNS › Edit',
   zone: 'Zone › Zone › Read',
   access: 'Account › Access: Apps and Policies › Edit',
+  analytics: 'Zone › Analytics › Read',
 } as const;
 
 /** Result of saving a token: either saved, or the user must pick an account first. */
@@ -359,6 +360,35 @@ export class CloudflareService {
         optional: true,
         message: `Optional, needed only to protect hosts with Cloudflare Access: ${errorMessage(err)}`,
       });
+    }
+
+    // Optional: only needed for the traffic statistics of each host.
+    if (firstZone) {
+      try {
+        const end = new Date();
+        const start = new Date(end.getTime() - 3_600_000);
+        await client.graphql(
+          `query Probe($zoneTag: string!, $start: Time!, $end: Time!) {
+            viewer { zones(filter: { zoneTag: $zoneTag }) {
+              httpRequestsAdaptiveGroups(limit: 1, filter: { datetime_geq: $start, datetime_lt: $end }) { count }
+            } }
+          }`,
+          { zoneTag: firstZone.id, start: start.toISOString(), end: end.toISOString() },
+        );
+        checks.push({
+          name: PERMISSION_NAMES.analytics,
+          ok: true,
+          optional: true,
+          message: 'Traffic statistics are available for each host',
+        });
+      } catch (err) {
+        checks.push({
+          name: PERMISSION_NAMES.analytics,
+          ok: false,
+          optional: true,
+          message: `Optional, needed only for traffic statistics: ${errorMessage(err)}`,
+        });
+      }
     }
     return checks;
   }

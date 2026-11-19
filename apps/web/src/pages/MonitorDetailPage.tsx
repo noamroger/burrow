@@ -4,6 +4,7 @@ import { Link, useParams } from 'react-router';
 import { MONITORING_RANGES, type HostMonitorDetail, type MonitoringRange } from '@burrow/shared';
 import { useHostMonitoring } from '../api/queries';
 import { BadgeCard } from '../components/monitoring/BadgeCard';
+import { TrafficCard } from '../components/monitoring/TrafficCard';
 import {
   formatPercent,
   Heartbeats,
@@ -154,6 +155,8 @@ function Detail({
             </div>
           </CardBody>
         </Card>
+
+        <TrafficCard hostId={summary.hostId} range={range} />
 
         <Card>
           <CardHeader title={t('monitoring.incidentsTitle')} />

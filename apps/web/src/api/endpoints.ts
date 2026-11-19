@@ -8,6 +8,8 @@ import {
   configImportReportSchema,
   backupRunSchema,
   badgeResponseSchema,
+  hostTrafficSchema,
+  trafficOverviewSchema,
   channelListSchema,
   channelSchema,
   channelTestResultSchema,
@@ -172,6 +174,12 @@ export const monitoringApi = {
   enableBadge: (id: number) =>
     api.post(`/monitoring/hosts/${id}/badge`, undefined, badgeResponseSchema),
   disableBadge: (id: number) => api.delete(`/monitoring/hosts/${id}/badge`),
+};
+
+export const trafficApi = {
+  overview: () => api.get('/traffic', trafficOverviewSchema),
+  host: (id: number, range: MonitoringRange) =>
+    api.get(`/traffic/hosts/${id}?range=${range}`, hostTrafficSchema),
 };
 
 export const notificationsApi = {

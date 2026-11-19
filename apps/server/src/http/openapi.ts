@@ -490,6 +490,26 @@ const ops: Operation[] = [
     },
     public: true,
   },
+  /* ---- traffic ---- */
+  {
+    method: 'get',
+    path: '/api/traffic',
+    tag: 'Traffic',
+    summary: 'Requests and bandwidth of every host over 24 hours (Cloudflare Analytics)',
+    description:
+      'Needs the optional token permission Zone › Analytics › Read; `error` says why when unavailable.',
+    response: s.trafficOverviewSchema,
+  },
+  {
+    method: 'get',
+    path: '/api/traffic/hosts/{id}',
+    tag: 'Traffic',
+    summary: 'Traffic of one host: requests, bandwidth, status codes, countries',
+    query: {
+      range: { schema: s.monitoringRangeSchema, description: '24h (default), 7d or 30d' },
+    },
+    response: s.hostTrafficSchema,
+  },
   /* ---- notifications ---- */
   {
     method: 'get',

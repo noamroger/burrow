@@ -22,6 +22,7 @@ import { LogBuffer } from './services/log-buffer.js';
 import { MaintenanceService } from './services/maintenance.js';
 import { MonitoringService } from './services/monitoring.js';
 import { NotificationService } from './services/notifications.js';
+import { TrafficService } from './services/traffic.js';
 import { Reconciler } from './services/reconciler.js';
 import type { SupervisorOptions } from './services/supervisor.js';
 import { SupervisorPool } from './services/supervisors.js';
@@ -57,6 +58,7 @@ export interface AppContext {
   maintenance: MaintenanceService;
   monitoring: MonitoringService;
   notifications: NotificationService;
+  traffic: TrafficService;
   lifecycle: Lifecycle;
 }
 
@@ -221,6 +223,11 @@ export function createContext(
       tunnelGraceMs: overrides.tunnelGraceMs,
       tunnelState: (id) => supervisors.status(id).state,
       tunnelName: (id) => tunnels.find(id)?.name,
+    }),
+    traffic: new TrafficService({
+      db,
+      cloudflare,
+      logger: logger.child({ component: 'traffic' }),
     }),
   } as Omit<AppContext, 'lifecycle'> as AppContext;
   ctx.lifecycle = new Lifecycle(ctx);

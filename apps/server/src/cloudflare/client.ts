@@ -164,6 +164,39 @@ export class CloudflareClient {
     return (await this.requestEnvelope<T>(method, path, opts)).result;
   }
 
+  /**
+   * Run a query on the GraphQL Analytics API (`POST /graphql`). GraphQL
+   * answers 200 with an `errors` list: authorization errors become
+   * `CLOUDFLARE_PERMISSION_MISSING`, others `CLOUDFLARE_API_ERROR`.
+   */
+  async graphql<T>(query: string, variables: Record<string, unknown> = {}): Promise<T> {
+    const res = (await this.requestEnvelope<unknown>('POST', '/graphql', {
+      body: { query, variables },
+    })) as unknown as {
+      data?: T | null;
+      errors?: Array<{ message: string; extensions?: { code?: string } }> | null;
+    };
+    const list = res.errors ?? [];
+    if (list.length > 0 || !res.data) {
+      const detail = list.map((e) => e.message).join('; ') || 'empty response';
+      const denied = list.some((e) =>
+        /authz|not authori[sz]ed|permission|access denied/i.test(
+          `${e.extensions?.code ?? ''} ${e.message}`,
+        ),
+      );
+      throw new CloudflareApiError(
+        denied ? 'CLOUDFLARE_PERMISSION_MISSING' : 'CLOUDFLARE_API_ERROR',
+        denied
+          ? `The API token cannot read analytics. Add the "Zone › Analytics › Read" permission to it. (${detail})`
+          : `Cloudflare Analytics API error: ${detail}`,
+        200,
+        list.map((e) => ({ code: 0, message: e.message })),
+        'POST /graphql',
+      );
+    }
+    return res.data;
+  }
+
   /** Fetch every page of a paginated list endpoint. */
   async paginate<T>(path: string, query: Query = {}, perPage = 50): Promise<T[]> {
     const items: T[] = [];

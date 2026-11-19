@@ -128,7 +128,7 @@ export const en = {
   'token.step3':
     'Add a first permission policy of type "Account" and select your account. In it, give Cloudflare Tunnel: Edit and Account Settings: Read. Add Access: Apps and Policies: Edit only if you want private hosts.',
   'token.step4':
-    'Add a second policy of type "Zone" and select the domains Burrow may use. In it, give DNS: Edit and Zone: Read. These two rows only exist in a Zone policy: the "DNS & Zones" category of the Account policy (DNS Settings, DNS Firewall, DNS Views...) does not have them, and Burrow needs none of its rows.',
+    'Add a second policy of type "Zone" and select the domains Burrow may use. In it, give DNS: Edit and Zone: Read, plus Analytics: Read if you want traffic statistics. These rows only exist in a Zone policy: the "DNS & Zones" category of the Account policy (DNS Settings, DNS Firewall, DNS Views...) does not have them, and Burrow needs none of its rows.',
   'token.step5':
     'Click "Continue to summary", then "Create Token". Copy the token and paste it here: Cloudflare shows it only once.',
   'token.dashboardHint':
@@ -701,6 +701,27 @@ export const en = {
   'monitoring.incidentResolved': 'Down for {duration}',
   'monitoring.incidentOngoing': 'Down for {duration}, still failing',
   'monitoring.openHistory': 'Uptime history',
+  'monitoring.requests24h': 'Requests 24h',
+
+  /* Traffic (Cloudflare Analytics) */
+  'traffic.title': 'Traffic',
+  'traffic.hint': 'Visitor requests seen by Cloudflare for this hostname.',
+  'traffic.requests': 'Requests',
+  'traffic.bandwidth': 'Bandwidth',
+  'traffic.visits': 'Visits',
+  'traffic.requestsCount': '{count} requests',
+  'traffic.chartLabel': '{total} requests over {range}',
+  'traffic.perHour': 'Requests per hour',
+  'traffic.perDay': 'Requests per day',
+  'traffic.statuses': 'Responses',
+  'traffic.countries': 'Top countries',
+  'traffic.none': 'No traffic in this period.',
+  'traffic.sampled':
+    'Cloudflare samples analytics: numbers are close estimates and arrive with a few minutes of delay.',
+  'traffic.permissionTitle': 'Traffic statistics need one more permission',
+  'traffic.permissionBody':
+    'Edit your Cloudflare API token, add Zone › Analytics › Read in its Zone policy, then verify the token again in Settings.',
+  'traffic.permissionLink': 'Open Settings',
 
   /* Notifications */
   'notifications.title': 'Notifications',

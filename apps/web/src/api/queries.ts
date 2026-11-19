@@ -3,6 +3,7 @@
  * hooks, which share caching, polling and invalidation rules.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { isApiError } from './client';
 import type {
   ChannelInput,
   MonitoringRange,
@@ -29,6 +30,7 @@ import {
   backupsApi,
   monitoringApi,
   notificationsApi,
+  trafficApi,
   zonesApi,
 } from './endpoints';
 
@@ -52,6 +54,8 @@ export const queryKeys = {
   maintenancePage: ['maintenance', 'page'] as const,
   monitoring: ['monitoring'] as const,
   notifications: ['notifications'] as const,
+  traffic: ['traffic'] as const,
+  trafficHost: (id: number, range: MonitoringRange) => ['traffic', id, range] as const,
   monitoringHost: (id: number, range: MonitoringRange) => ['monitoring', id, range] as const,
 };
 
@@ -391,6 +395,28 @@ export function useBadge(id: number) {
       onSuccess: invalidate,
     }),
   };
+}
+
+/* ------------------------------- traffic ------------------------------ */
+
+export function useTrafficOverview() {
+  return useQuery({
+    queryKey: queryKeys.traffic,
+    queryFn: trafficApi.overview,
+    staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
+  });
+}
+
+export function useHostTraffic(id: number, range: MonitoringRange) {
+  return useQuery({
+    queryKey: queryKeys.trafficHost(id, range),
+    queryFn: () => trafficApi.host(id, range),
+    staleTime: 5 * 60_000,
+    // A missing permission will not fix itself: do not retry it.
+    retry: (count, error) => count < 1 && !isApiError(error, 'CLOUDFLARE_PERMISSION_MISSING'),
+    placeholderData: (previous) => (previous?.hostId === id ? previous : undefined),
+  });
 }
 
 /* ---------------------------- notifications --------------------------- */

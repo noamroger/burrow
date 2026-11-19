@@ -67,3 +67,22 @@ export function formatMinutes(minutes: number): string {
   if (h === 0) return `${m} min`;
   return m === 0 ? `${h} h` : `${h} h ${m} min`;
 }
+
+/** 1234567 -> "1.2 MB" (decimal units, like Cloudflare's dashboard). */
+export function formatBytes(bytes: number): string {
+  const units = ['B', 'kB', 'MB', 'GB', 'TB'];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1000 && unit < units.length - 1) {
+    value /= 1000;
+    unit++;
+  }
+  return `${value >= 100 || unit === 0 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`;
+}
+
+const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
+
+/** 12345 -> "12.3K". */
+export function formatCount(n: number): string {
+  return compact.format(n);
+}

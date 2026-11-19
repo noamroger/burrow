@@ -17,6 +17,7 @@ export * from './templates.js';
 export * from './maintenance.js';
 export * from './monitoring.js';
 export * from './notifications.js';
+export * from './traffic.js';
 
 /* ------------------------------------------------------------------ */
 /* Common                                                              */
@@ -1049,6 +1050,13 @@ export const REQUIRED_TOKEN_PERMISSIONS = [
     group: 'Access: Apps and Policies',
     level: 'Edit',
     why: 'Protect private hosts with Cloudflare Access (sign-in required)',
+    optional: true,
+  },
+  {
+    scope: 'Zone',
+    group: 'Analytics',
+    level: 'Read',
+    why: 'Show the traffic of each host (requests, bandwidth, countries)',
     optional: true,
   },
 ] as const;
