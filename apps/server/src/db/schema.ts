@@ -121,6 +121,8 @@ export const proxyHosts = sqliteTable(
       .notNull()
       .default(sql`'[]'`),
     accessSessionDuration: text('access_session_duration').notNull().default('24h'),
+    /** Service template the host was made from (`jellyfin`, `proxmox`…), for display. */
+    template: text('template'),
     dnsRecordId: text('dns_record_id'),
     syncStatus: text('sync_status', { enum: ['pending', 'synced', 'error', 'drift'] })
       .notNull()

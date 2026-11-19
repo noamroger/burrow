@@ -54,7 +54,27 @@ describe('HostForm', () => {
       enabled: true,
       options: { noTLSVerify: false, httpHostHeader: '', originServerName: '' },
       access: { enabled: false, emails: [], emailDomains: [], sessionDuration: '24h' },
+      template: null,
     });
+  });
+
+  it('prefills the service and options from a template, keeping a typed address', async () => {
+    const { user, onSubmit } = setup();
+    await user.type(screen.getByLabelText('Service URL'), 'http://192.168.1.2');
+    await user.selectOptions(screen.getByLabelText(/Start from a template/), 'proxmox');
+
+    expect(screen.getByLabelText('Subdomain')).toHaveValue('proxmox');
+    expect(screen.getByLabelText('Service URL')).toHaveValue('https://192.168.1.2:8006');
+    expect(screen.getByTestId('template-notes')).toHaveTextContent(/self-signed/);
+
+    await user.click(screen.getByRole('button', { name: 'Create host' }));
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        service: 'https://192.168.1.2:8006',
+        options: { noTLSVerify: true, httpHostHeader: '', originServerName: '' },
+        template: 'proxmox',
+      }),
+    );
   });
 
   it('protects a host with Cloudflare Access: emails, domains and session length', async () => {

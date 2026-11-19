@@ -1,5 +1,6 @@
 import {
   accessSessionDurationSchema,
+  findTemplate,
   buildHostname,
   CONFIG_FORMAT_VERSION,
   type ConfigDocument,
@@ -43,6 +44,7 @@ type HostValues = Pick<
   | 'accessEmails'
   | 'accessEmailDomains'
   | 'accessSessionDuration'
+  | 'template'
 >;
 
 /** JSON with sorted object keys, to compare values regardless of key order. */
@@ -127,6 +129,7 @@ export class ConfigService {
                 .catch('24h')
                 .parse(h.accessSessionDuration),
             },
+            template: h.template,
           };
         }),
     };
@@ -263,6 +266,7 @@ export class ConfigService {
         accessEmails: [...new Set(h.access.emails)],
         accessEmailDomains: [...new Set(h.access.emailDomains)],
         accessSessionDuration: h.access.sessionDuration,
+        template: findTemplate(h.template)?.id ?? null,
       };
       const before = existing.get(key);
       if (!before) {

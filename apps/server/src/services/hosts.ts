@@ -88,6 +88,7 @@ export class HostService {
         emailDomains: row.accessEmailDomains,
         sessionDuration: toSessionDuration(row.accessSessionDuration),
       },
+      template: row.template,
       sync: { status: row.syncStatus, error: row.syncError, lastSyncedAt: row.lastSyncedAt },
       health,
       createdAt: row.createdAt,
@@ -196,6 +197,7 @@ export class HostService {
       accessEmails: [...new Set(input.access.emails)],
       accessEmailDomains: [...new Set(input.access.emailDomains)],
       accessSessionDuration: input.access.sessionDuration,
+      template: input.template,
     };
   }
 

@@ -10,6 +10,9 @@
  * value returned by `GET /api/auth/me`.
  */
 import { z } from 'zod';
+import { templateIdSchema } from './templates.js';
+
+export * from './templates.js';
 
 /* ------------------------------------------------------------------ */
 /* Common                                                              */
@@ -424,6 +427,8 @@ export const proxyHostInputSchema = z.object({
     .default({}),
   /** Cloudflare Access protection. Applies to the whole hostname (every path). */
   access: accessSettingsInputSchema.optional().default({}),
+  /** Service template the host was made from (see GET /api/templates), or null. */
+  template: templateIdSchema.optional().default(null),
 });
 /** POST /api/hosts body. PUT /api/hosts/:id body (full replace). */
 export type ProxyHostInput = z.input<typeof proxyHostInputSchema>;
@@ -467,6 +472,8 @@ export const proxyHostSchema = z.object({
     extra: z.record(z.unknown()),
   }),
   access: accessSettingsSchema,
+  /** Service template the host was made from, or null. */
+  template: z.string().nullable(),
   sync: z.object({
     status: syncStatusSchema,
     error: z.string().nullable(),
@@ -732,6 +739,7 @@ export const configHostSchema = z.object({
     .optional()
     .default({}),
   access: accessSettingsInputSchema.optional().default({}),
+  template: z.string().trim().toLowerCase().nullable().optional().default(null),
 });
 export type ConfigHost = z.input<typeof configHostSchema>;
 

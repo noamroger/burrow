@@ -1,0 +1,1 @@
+ALTER TABLE `proxy_hosts` ADD `template` text;

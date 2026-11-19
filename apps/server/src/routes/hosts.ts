@@ -1,8 +1,10 @@
 import {
   proxyHostInputSchema,
+  SERVICE_TEMPLATES,
   type OriginHealth,
   type ProxyHost,
   type ProxyHostList,
+  type ServiceTemplateList,
 } from '@burrow/shared';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
@@ -13,6 +15,10 @@ const idParams = z.object({ id: z.coerce.number().int().positive() });
 
 /** Proxy host CRUD. Registered behind `requireAuth`. */
 export async function hostRoutes(app: FastifyInstance, ctx: AppContext): Promise<void> {
+  app.get('/api/templates', async (): Promise<ServiceTemplateList> => ({
+    templates: [...SERVICE_TEMPLATES],
+  }));
+
   app.get('/api/hosts', async (): Promise<ProxyHostList> => ({ hosts: ctx.hosts.list() }));
 
   app.get('/api/hosts/:id', async (req): Promise<ProxyHost> => {

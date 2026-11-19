@@ -196,6 +196,14 @@ const ops: Operation[] = [
     summary: 'Probe the origin now',
     response: s.originHealthSchema,
   },
+  /* ---- templates ---- */
+  {
+    method: 'get',
+    path: '/api/templates',
+    tag: 'Proxy hosts',
+    summary: 'Service templates (Jellyfin, Home Assistant, Proxmox…) with their origin settings',
+    response: s.serviceTemplateListSchema,
+  },
   /* ---- tunnels ---- */
   {
     method: 'get',

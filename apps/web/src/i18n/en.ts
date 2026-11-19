@@ -214,6 +214,21 @@ export const en = {
   'host.path': 'Path',
   'host.pathHint': 'A regular expression such as ^/api. Leave empty to match every path.',
   'host.advanced': 'Advanced options',
+  'host.template.label': 'Start from a template',
+  'host.template.none': 'No template',
+  'host.template.notesTitle': 'Tips for {name}',
+  'host.template.websockets':
+    'Uses WebSockets: they work through the tunnel without extra settings.',
+  'host.template.noTLSVerify': 'noTLSVerify is on because the app uses a self-signed certificate.',
+  'host.template.recommendAccess':
+    'This is an admin panel: protecting it with Cloudflare Access is recommended.',
+  'host.template.category.media': 'Media',
+  'host.template.category.home': 'Home automation',
+  'host.template.category.files': 'Files & passwords',
+  'host.template.category.infrastructure': 'Infrastructure',
+  'host.template.category.monitoring': 'Monitoring',
+  'host.template.category.development': 'Development',
+  'host.template.category.remote': 'Remote access',
   'host.noTLSVerifyHint':
     'Accept self-signed certificates on an https:// origin (for example Proxmox on :8006).',
   'host.httpHostHeaderHint': 'Send this Host header to the origin instead of the public hostname.',

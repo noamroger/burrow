@@ -9,8 +9,13 @@ import { useId, useMemo, useState, type FormEvent } from 'react';
 import {
   ACCESS_SESSION_DURATIONS,
   buildHostname,
+  findTemplate,
   proxyHostInputSchema,
+  SERVICE_TEMPLATES,
+  TEMPLATE_CATEGORIES,
+  templateServiceUrl,
   type AccessSessionDuration,
+  type ServiceTemplate,
   type ProxyHost,
   type ProxyHostInput,
   type TunnelSummary,
@@ -42,6 +47,8 @@ export interface HostFormValues {
   accessEmails: string;
   accessEmailDomains: string;
   accessSessionDuration: AccessSessionDuration;
+  /** Template id, '' for none. */
+  template: string;
 }
 
 /** Split a free-text list on new lines, commas, semicolons and spaces. */
@@ -74,6 +81,7 @@ export function initialValues(host: ProxyHost | undefined, zones: Zone[]): HostF
       accessEmails: host.access.emails.join('\n'),
       accessEmailDomains: host.access.emailDomains.join('\n'),
       accessSessionDuration: host.access.sessionDuration,
+      template: host.template ?? '',
     };
   }
   return {
@@ -90,6 +98,25 @@ export function initialValues(host: ProxyHost | undefined, zones: Zone[]): HostF
     accessEmails: '',
     accessEmailDomains: '',
     accessSessionDuration: '24h',
+    template: '',
+  };
+}
+
+/**
+ * Apply a template: the service URL and origin options are replaced, the
+ * subdomain is only filled when empty. An address the user already typed
+ * (host or IP) is kept.
+ */
+export function applyTemplate(values: HostFormValues, template: ServiceTemplate): HostFormValues {
+  const typed = /^[a-z+]+:\/\/([^/:]+)/i.exec(values.service.trim())?.[1];
+  return {
+    ...values,
+    template: template.id,
+    subdomain: values.subdomain.trim() ? values.subdomain : template.subdomain,
+    service: templateServiceUrl(template, typed ?? template.container),
+    noTLSVerify: template.options.noTLSVerify,
+    httpHostHeader: template.options.httpHostHeader,
+    originServerName: template.options.originServerName,
   };
 }
 
@@ -112,6 +139,7 @@ export function toInput(values: HostFormValues): ProxyHostInput {
       emailDomains: splitList(values.accessEmailDomains),
       sessionDuration: values.accessSessionDuration,
     },
+    template: values.template || null,
   };
 }
 
@@ -203,6 +231,15 @@ export function HostForm({ host, zones, tunnels = [], onSubmit, onCancel }: Host
   return (
     <form onSubmit={handleSubmit} noValidate className="space-y-5">
       {serverError ? <ServerError error={serverError} hostname={fqdn} /> : null}
+
+      <TemplatePicker
+        id={id('template')}
+        value={values.template}
+        onChange={(templateId) => {
+          const template = findTemplate(templateId);
+          setValues((v) => (template ? applyTemplate(v, template) : { ...v, template: '' }));
+        }}
+      />
 
       <fieldset className="space-y-2">
         <legend className="mb-1.5 text-sm font-medium text-fg">{t('host.publicHostname')}</legend>
@@ -543,6 +580,61 @@ function ServerError({ error, hostname }: { error: unknown; hostname: string }) 
   return (
     <Alert tone="danger" title={t('host.saveFailed')}>
       {errorMessage(error)}
+    </Alert>
+  );
+}
+
+function TemplatePicker({
+  id,
+  value,
+  onChange,
+}: {
+  id: string;
+  value: string;
+  onChange: (templateId: string) => void;
+}) {
+  const template = findTemplate(value);
+  return (
+    <div className="space-y-2.5">
+      <Field id={id} label={t('host.template.label')} aside={t('common.optional')}>
+        <Select id={id} value={value} onChange={(e) => onChange(e.target.value)}>
+          <option value="">{t('host.template.none')}</option>
+          {TEMPLATE_CATEGORIES.map((category) => {
+            const items = SERVICE_TEMPLATES.filter((x) => x.category === category);
+            if (items.length === 0) return null;
+            return (
+              <optgroup key={category} label={t(`host.template.category.${category}`)}>
+                {items.map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {x.name}
+                  </option>
+                ))}
+              </optgroup>
+            );
+          })}
+        </Select>
+      </Field>
+      {template ? <TemplateNotes template={template} /> : null}
+    </div>
+  );
+}
+
+function TemplateNotes({ template }: { template: ServiceTemplate }) {
+  const facts = [
+    template.websockets ? t('host.template.websockets') : null,
+    template.options.noTLSVerify ? t('host.template.noTLSVerify') : null,
+    template.recommendAccess ? t('host.template.recommendAccess') : null,
+  ].filter((x): x is string => !!x);
+  if (facts.length === 0 && template.notes.length === 0) {
+    return <p className="text-xs text-fg-muted">{template.description}</p>;
+  }
+  return (
+    <Alert tone="info" title={t('host.template.notesTitle', { name: template.name })}>
+      <ul className="list-disc space-y-1 pl-4" data-testid="template-notes">
+        {[...facts, ...template.notes].map((note) => (
+          <li key={note}>{note}</li>
+        ))}
+      </ul>
     </Alert>
   );
 }
