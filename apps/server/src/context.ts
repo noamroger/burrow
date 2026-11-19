@@ -137,7 +137,7 @@ export function createContext(
     sqlite,
     settings,
     auth,
-    apiTokens: new ApiTokenService(db),
+    apiTokens: new ApiTokenService(db, box),
     audit,
     cloudflare,
     tunnels,

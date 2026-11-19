@@ -64,7 +64,7 @@ its types from them. Changing the API means changing this package first.
 | `tunnels`     | Tunnels Burrow manages ([ADR 0006](adr/0006-multiple-tunnels.md)) | `id`, `cf_id` (Cloudflare UUID), `name`, `origin` (`created` \| `imported`), `run_connector`, `is_default`, `managed_ingress` (JSON keys of the rules Burrow wrote)                                                                                                                                              |
 | `zones`       | Zones the admin enabled for use                                   | `id` (Cloudflare zone id), `name`, `enabled`                                                                                                                                                                                                                                                                     |
 | `proxy_hosts` | Desired state of each published service                           | `id`, `subdomain`, `zone_id`, `hostname` (computed FQDN, unique), `service` (origin URL), `path`, `no_tls_verify`, `http_host_header`, `origin_server_name`, `enabled`, `dns_record_id`, `sync_status` (`pending` \| `synced` \| `error` \| `drift`), `sync_error`, `last_synced_at`, `created_at`, `updated_at` |
-| `api_tokens`  | Personal API tokens for scripts ([docs/api.md](api.md))           | `id`, `user_id`, `name`, `hint` (first characters), `token_hash` (SHA-256), `last_used_at`, `created_at`                                                                                                                                                                                                         |
+| `api_tokens`  | Personal API tokens for scripts ([docs/api.md](api.md))           | `id`, `user_id`, `name`, `hint` (first characters), `token_hash` (HMAC-SHA256 with the instance key), `last_used_at`, `created_at`                                                                                                                                                                               |
 | `audit_log`   | Who changed what (no secrets)                                     | `id`, `user_id`, `action`, `target`, `created_at`                                                                                                                                                                                                                                                                |
 
 `proxy_hosts.tunnel_id` points at the tunnel that carries the host (`NULL` =
@@ -298,7 +298,7 @@ stopped ──start()──▶ starting ──first "Registered tunnel connectio
 - **OpenAPI**: done. `src/http/openapi.ts` lists the routes with their shared
   zod schemas and converts them with `zod-to-json-schema`; `@fastify/swagger`
   serves the document, `@fastify/swagger-ui` the docs page (see
-  [docs/api.md](api.md)). Personal API tokens (`api_tokens` table, SHA-256
+  [docs/api.md](api.md)). Personal API tokens (`api_tokens` table, HMAC-SHA256
   only) authenticate scripts without the CSRF header.
 - **Config export/import**: done (`ConfigService`, [docs/api.md](api.md)).
 - **Backups**: done (§4.1). `BackupService` emits `completed` and `failed`.

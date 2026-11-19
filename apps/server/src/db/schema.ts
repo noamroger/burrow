@@ -35,7 +35,7 @@ export const sessions = sqliteTable(
   (t) => [index('sessions_user_idx').on(t.userId)],
 );
 
-/** Personal API tokens for scripts. Only the SHA-256 of a token is stored. */
+/** Personal API tokens for scripts. Only a keyed hash (HMAC-SHA256) of a token is stored. */
 export const apiTokens = sqliteTable(
   'api_tokens',
   {

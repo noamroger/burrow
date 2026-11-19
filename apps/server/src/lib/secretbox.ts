@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHmac, hkdfSync, randomBytes } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
@@ -44,6 +44,18 @@ export class SecretBox {
     writeFileSync(file, key.toString('base64'), { mode: 0o600, flag: 'wx' });
     chmodSync(file, 0o600);
     return SecretBox.fromKey(key);
+  }
+
+  /**
+   * Keyed fingerprint (HMAC-SHA256, hex) of a high-entropy value such as an
+   * API token, with a subkey derived for `purpose`. Without the instance key,
+   * a leaked database cannot be used to check a guess.
+   */
+  mac(purpose: string, value: string): string {
+    const subkey = Buffer.from(
+      hkdfSync('sha256', this.key, HKDF_SALT, `burrow mac ${purpose}`, 32),
+    );
+    return createHmac('sha256', subkey).update(value).digest('hex');
   }
 
   /** Encrypt a UTF-8 string. Each call uses a fresh random IV. */

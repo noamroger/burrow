@@ -1,13 +1,12 @@
 import { API_TOKEN_PREFIX, type ApiToken, type CreatedApiToken } from '@burrow/shared';
 import { and, desc, eq } from 'drizzle-orm';
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import type { Db } from '../db/client.js';
 import { apiTokens, users, type ApiTokenRow } from '../db/schema.js';
 import { errors } from '../lib/errors.js';
+import type { SecretBox } from '../lib/secretbox.js';
 import { nowIso } from '../lib/time.js';
 import type { AuthenticatedSession } from './auth.js';
-
-const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 
 /** Do not write `last_used_at` more than once a minute per token. */
 const TOUCH_EVERY_MS = 60_000;
@@ -19,7 +18,15 @@ const TOUCH_EVERY_MS = 60_000;
  * manage tokens or change the password.
  */
 export class ApiTokenService {
-  constructor(private readonly db: Db) {}
+  constructor(
+    private readonly db: Db,
+    private readonly box: SecretBox,
+  ) {}
+
+  /** Tokens are random (256 bits): a keyed fast hash is enough, no password hash. */
+  private hash(token: string): string {
+    return this.box.mac('api-token', token);
+  }
 
   list(userId: number): ApiToken[] {
     return this.db
@@ -39,7 +46,7 @@ export class ApiTokenService {
         userId,
         name,
         hint: token.slice(0, API_TOKEN_PREFIX.length + 4),
-        tokenHash: sha256(token),
+        tokenHash: this.hash(token),
       })
       .returning()
       .get();
@@ -65,7 +72,7 @@ export class ApiTokenService {
       .select({ token: apiTokens, user: { id: users.id, email: users.email } })
       .from(apiTokens)
       .innerJoin(users, eq(users.id, apiTokens.userId))
-      .where(eq(apiTokens.tokenHash, sha256(token)))
+      .where(eq(apiTokens.tokenHash, this.hash(token)))
       .get();
     if (!row) return null;
     const now = nowIso();

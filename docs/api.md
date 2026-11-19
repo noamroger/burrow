@@ -14,7 +14,8 @@ everything can be scripted.
 ## Authentication
 
 Create a token in **Settings › API tokens**. It is shown once; Burrow only
-stores its SHA-256. Send it as a bearer token:
+stores a keyed hash of it (HMAC-SHA256 with the instance key). Send it as a
+bearer token:
 
 ```bash
 export BURROW=http://192.168.1.10:8080
