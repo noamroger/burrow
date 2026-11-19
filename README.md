@@ -78,6 +78,16 @@ When you remove the service, Burrow removes the route and the DNS record.
   message, or your own HTML, with a live preview.
 - **SSH, RDP and TCP**: publish non-HTTP services; SSH and VNC can even open
   in the browser behind Cloudflare Access.
+- **Uptime monitoring**: every host is checked every minute, with uptime
+  history, response times and incidents over 24 hours, 7 or 30 days, and a
+  public status badge to embed in a README or a status page.
+- **Notifications**: Discord, ntfy or any webhook when a tunnel goes down, a
+  service stops responding, the Cloudflare configuration drifts or a backup
+  fails.
+- **Traffic statistics**: requests, bandwidth, status codes and countries of
+  each host, from Cloudflare Analytics.
+- **Homepage**: a dashboard of your services with their icons and status,
+  for you alone or public, on its own hostname if you like.
 - **Export, import and REST API**: move your configuration to another server
   as one JSON file, and script everything with API tokens and the built-in
   OpenAPI documentation at `/api/docs` (see [docs/api.md](docs/api.md)).
@@ -330,6 +340,78 @@ Cloudflare can also render RDP in the browser, but that needs a private
 network route and an Access "target" rather than a public route, which
 Burrow does not set up yet: RDP hosts use `cloudflared access rdp`.
 
+## Monitoring and status badges
+
+Burrow checks every enabled host every minute (`HEALTHCHECK_INTERVAL_SECONDS`)
+and keeps the results for 30 days (`MONITORING_RETENTION_DAYS`). The
+**Monitoring** page lists each host with its last checks and its uptime over
+24 hours and 30 days; open a host for its response times, uptime over time
+and incidents (24 hours, 7 or 30 days). A host counts as down after two
+failed checks in a row. Hosts in maintenance mode raise no alert.
+
+**Status badge:** on a host's monitoring page, **Turn on the badge** gives a
+secret link to an SVG image showing the status, the 30-day uptime and the
+last 12 hours. Copy the Markdown or HTML code into a README, a wiki or a
+status page; choose the dark (`soil`) or light (`chalk`) style and the text.
+The link only reveals what the badge shows. **New URL** invalidates the old
+one. Whoever displays the badge must reach your Burrow: on the Internet,
+give the homepage a public hostname (see [Homepage](#homepage)), badges are
+served there too.
+
+## Notifications
+
+In **Settings › Notifications**, add one or more channels and choose their
+events: tunnel down and back up, host down and back up, drift detected,
+backup failed. Each channel has a **Test** button.
+
+| Type    | What you need                                                                              |
+| ------- | ------------------------------------------------------------------------------------------ |
+| Discord | A webhook URL (channel settings › Integrations › Webhooks)                                 |
+| ntfy    | A topic, and the server if not `https://ntfy.sh`; an access token for protected topics     |
+| Webhook | Any URL. Burrow `POST`s JSON (`event`, `severity`, `title`, `message`, `at`, `data`) to it |
+
+With a secret, webhook requests carry
+`X-Burrow-Signature: sha256=<HMAC-SHA256 of the body>` so you can check they
+come from Burrow, and `X-Burrow-Event` names the event. Secrets and webhook
+URLs are stored encrypted and never shown again. A tunnel is reported down
+only when it stays disconnected for a minute, so quick restarts stay quiet.
+
+## Traffic statistics
+
+With the optional **Zone › Analytics › Read** permission on the API token
+(see [The Cloudflare API token](#the-cloudflare-api-token)), the monitoring
+page of each host shows its requests, bandwidth, visits, status codes and
+top countries over 24 hours, 7 or 30 days, and the Monitoring list shows the
+requests of the last 24 hours. Numbers come from Cloudflare's GraphQL
+Analytics API (visitor requests only), are sampled by Cloudflare, lag a few
+minutes, and are counted per hostname (hosts sharing a hostname with
+different paths show the same numbers). Without the permission, Burrow
+explains how to add it; nothing else changes.
+
+## Homepage
+
+**Settings › Homepage** turns on a dashboard of your services at `/home`:
+one tile per host with its icon, name, description and status, grouped in
+sections, with a search (press `/`). Choose who can see it:
+
+- **Only me**: behind the Burrow sign-in.
+- **Anyone with the link**: no sign-in. The page only contains the public
+  links (`https://app.example.com`), never your internal addresses.
+
+Each host picks its tile in its form, under **Homepage**: shown or hidden,
+name, description, section and icon. The icon is automatic for templates
+(from [Dashboard Icons](https://github.com/homarr-labs/dashboard-icons));
+you can also type a Dashboard Icons name (`nextcloud`), an image URL, or
+upload an image. Burrow downloads remote icons once and serves them itself,
+so visitors never load anything from another site. Only enabled HTTP hosts
+(and SSH/VNC hosts with a browser terminal) are listed.
+
+**On its own hostname:** to share the homepage at `https://home.example.com`
+without exposing the admin UI, add a host with that hostname and the service
+`http://localhost:8080` (Burrow itself), then enter the hostname in
+**Public hostname**. Requests for it only reach the homepage, its icons and
+the status badges; every other page and API route answers 404 there.
+
 ## Configuration
 
 Everything is configured from the UI. These environment variables are all
@@ -350,6 +432,8 @@ optional:
 | `MAINTENANCE_PORT`             | `8081`                        | Port of the maintenance page server (`0` turns it off)                                                                                                                    |
 | `MAINTENANCE_LISTEN`           | `127.0.0.1`                   | Address it listens on. Use `0.0.0.0` only if a tunnel connector runs on another machine.                                                                                  |
 | `MAINTENANCE_ORIGIN`           | `http://127.0.0.1:8081`       | URL cloudflared uses to reach it                                                                                                                                          |
+| `HEALTHCHECK_INTERVAL_SECONDS` | `60`                          | How often each host is checked (`0` turns the checks and the uptime history off)                                                                                          |
+| `MONITORING_RETENTION_DAYS`    | `30`                          | How long check results are kept (1 to 365 days)                                                                                                                           |
 | `PUID` / `PGID`                | `1000`                        | User and group ids Burrow runs as. On start, Burrow makes `/data` belong to them (you never need to `chown` it).                                                          |
 
 All data lives in `/data` (SQLite database and secret key). Back up this
@@ -518,6 +602,10 @@ backups (folder or S3/R2).
 hosts, maintenance mode with a customizable page, SSH/RDP/TCP hosts with
 browser-rendered SSH and VNC.
 
+**v0.5**: uptime monitoring with history, response times and public status
+badges, notifications (Discord, ntfy, webhook), per-host traffic statistics
+from Cloudflare Analytics, homepage dashboard (private or public).
+
 **Next:**
 
 - [x] Docker auto-discovery with labels (`burrow.host=app.example.com`,
@@ -532,7 +620,10 @@ browser-rendered SSH and VNC.
 - [x] Documented REST API (OpenAPI)
 - [x] Drift alerts (changes made in the Cloudflare dashboard)
 - [x] Scheduled backups (folder or S3/R2)
-- [ ] Notifications (Discord, ntfy, webhook)
+- [x] Uptime history, response times and status badges
+- [x] Notifications (Discord, ntfy, webhook)
+- [x] Traffic statistics per host (Cloudflare Analytics)
+- [x] Homepage dashboard with icons
 - [ ] French translation
 
 Ideas and votes are welcome in the

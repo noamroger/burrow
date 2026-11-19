@@ -99,6 +99,23 @@ Rescan Docker labels now:
 curl -s -X POST -H "Authorization: Bearer $TOKEN" $BURROW/api/docker/scan | jq '.containers'
 ```
 
+Uptime of every host, and the traffic of one host over 7 days:
+
+```bash
+curl -s -H "Authorization: Bearer $TOKEN" $BURROW/api/monitoring \
+  | jq '.hosts[] | {hostname, state, uptime}'
+curl -s -H "Authorization: Bearer $TOKEN" "$BURROW/api/traffic/hosts/12?range=7d" | jq '.totals'
+```
+
+Send alerts to an ntfy topic, then test the channel:
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"name":"Phone","type":"ntfy","events":["host.down","host.up","tunnel.down"],"config":{"topic":"my-burrow-alerts"}}' \
+  $BURROW/api/notifications/channels
+curl -s -X POST -H "Authorization: Bearer $TOKEN" $BURROW/api/notifications/channels/1/test
+```
+
 ## Configuration file
 
 `GET /api/config/export` returns:
@@ -132,7 +149,8 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" $BURROW/api/docker/scan | jq '
         "originServerName": "",
         "extra": {}
       },
-      "access": { "enabled": false, "emails": [], "emailDomains": [], "sessionDuration": "24h" }
+      "access": { "enabled": false, "emails": [], "emailDomains": [], "sessionDuration": "24h" },
+      "home": { "visible": true, "title": "", "description": "", "icon": "", "group": "Media" }
     }
   ]
 }
