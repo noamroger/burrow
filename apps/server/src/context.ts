@@ -10,6 +10,7 @@ import { SecretBox } from './lib/secretbox.js';
 import { ApiTokenService } from './services/api-tokens.js';
 import { AuditService } from './services/audit.js';
 import { AuthService } from './services/auth.js';
+import { TwoFactorService } from './services/two-factor.js';
 import { CloudflareService } from './services/cloudflare.js';
 import { ConfigService } from './services/config-io.js';
 import { BackupService } from './backup/service.js';
@@ -41,6 +42,7 @@ export interface AppContext {
   sqlite: Database.Database;
   settings: SettingsRepository;
   auth: AuthService;
+  twoFactor: TwoFactorService;
   apiTokens: ApiTokenService;
   audit: AuditService;
   cloudflare: CloudflareService;
@@ -160,6 +162,7 @@ export function createContext(
     sqlite,
     settings,
     auth,
+    twoFactor: new TwoFactorService({ db, box }),
     apiTokens: new ApiTokenService(db, box),
     audit,
     cloudflare,

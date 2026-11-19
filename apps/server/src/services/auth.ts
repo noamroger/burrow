@@ -130,6 +130,31 @@ export class AuthService {
       .run();
   }
 
+  /** A user by id (after a second factor). */
+  findUser(userId: number): UserRow {
+    const user = this.db.select().from(users).where(eq(users.id, userId)).get();
+    if (!user) throw new AppError('UNAUTHORIZED', 'Authentication required', 401);
+    return user;
+  }
+
+  /** Check the password of a signed-in user (to confirm a sensitive change). */
+  async confirmPassword(userId: number, password: string): Promise<void> {
+    const user = this.db.select().from(users).where(eq(users.id, userId)).get();
+    if (!user) throw new AppError('UNAUTHORIZED', 'Authentication required', 401);
+    const ok = await verify(user.passwordHash, password).catch(() => false);
+    if (!ok) throw new AppError('VALIDATION_ERROR', 'The password is incorrect.', 400);
+  }
+
+  /**
+   * Set a new password without the current one (the `burrow-reset-password`
+   * script) and sign out every session.
+   */
+  async resetPassword(userId: number, next: string): Promise<void> {
+    const passwordHash = await hash(next, ARGON2_OPTIONS);
+    this.db.update(users).set({ passwordHash }).where(eq(users.id, userId)).run();
+    this.db.delete(sessions).where(eq(sessions.userId, userId)).run();
+  }
+
   /** Change a password and revoke every other session of the user. */
   async changePassword(
     userId: number,

@@ -29,6 +29,7 @@ import { notificationRoutes } from './routes/notifications.js';
 import { trafficRoutes } from './routes/traffic.js';
 import { tokenRoutes } from './routes/tokens.js';
 import { tunnelRoutes } from './routes/tunnel.js';
+import { twoFactorRoutes } from './routes/two-factor.js';
 
 /** Fastify takes a hop count as a function; booleans and address lists as-is. */
 function toTrustProxy(
@@ -194,6 +195,7 @@ export async function buildApp(
     await trafficRoutes(scope, ctx);
     await homepageSettingsRoutes(scope, ctx);
     await tokenRoutes(scope, ctx);
+    await twoFactorRoutes(scope, ctx);
   });
 
   const webRoot = ctx.config.webDistDir;

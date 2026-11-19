@@ -1,6 +1,6 @@
-/** Settings: Cloudflare token, zones, configuration, API tokens, password, session. */
-import { useId, useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router';
+/** Settings: Cloudflare token, zones, configuration, two-step verification, API tokens, password, session. */
+import { useEffect, useId, useState, type FormEvent } from 'react';
+import { useLocation, useNavigate } from 'react-router';
 import { changePasswordSchema } from '@burrow/shared';
 import { isApiError } from '../api/client';
 import {
@@ -39,8 +39,14 @@ import { DriftCard } from '../components/settings/DriftCard';
 import { HomepageCard } from '../components/settings/HomepageCard';
 import { MaintenanceCard } from '../components/settings/MaintenanceCard';
 import { NotificationsCard } from '../components/settings/NotificationsCard';
+import { SecurityCard } from '../components/settings/SecurityCard';
 
 export function SettingsPage() {
+  const { hash } = useLocation();
+  // Links such as /settings#security jump to their card.
+  useEffect(() => {
+    if (hash) document.getElementById(hash.slice(1))?.scrollIntoView({ block: 'start' });
+  }, [hash]);
   return (
     <>
       <PageHeader title={t('settings.title')} description={t('settings.description')} />
@@ -59,6 +65,9 @@ export function SettingsPage() {
         <DriftCard />
         <ConfigCard />
         <BackupsCard />
+        <div id="security" className="scroll-mt-6">
+          <SecurityCard />
+        </div>
         <ApiTokensCard />
         <div className="grid gap-6 lg:grid-cols-2">
           <PasswordCard />

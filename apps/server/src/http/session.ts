@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { AppContext } from '../context.js';
 import { AppError } from '../lib/errors.js';
 import { safeEqual, type AuthenticatedSession } from '../services/auth.js';
+import type { WebAuthnOrigin } from '../services/two-factor.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -103,6 +104,16 @@ export function requireSession(req: FastifyRequest): void {
   if (req.auth?.via === 'token') {
     throw new AppError('FORBIDDEN', 'Sign in to the web UI to do this; API tokens cannot.', 403);
   }
+}
+
+/**
+ * The host name passkeys are bound to (WebAuthn RP ID) and the origins the
+ * browser may report, taken from the request: Burrow is reached on whatever
+ * address the admin uses (LAN IP, local name, public hostname).
+ */
+export function webAuthnOrigin(req: FastifyRequest): WebAuthnOrigin {
+  const host = req.host;
+  return { rpId: req.hostname, origins: [`https://${host}`, `http://${host}`] };
 }
 
 /** The authenticated user id (only call behind {@link requireAuth}). */

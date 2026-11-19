@@ -3,6 +3,15 @@
  * See packages/shared/src/index.ts for the route documentation.
  */
 import {
+  loginResponseSchema,
+  passkeyOptionsSchema,
+  passkeySchema,
+  recoveryCodesSchema,
+  registeredPasskeySchema,
+  totpSetupSchema,
+  twoFactorStatusSchema,
+  type LoginResponse,
+  type VerifyLoginInput,
   homeDataSchema,
   homepageSettingsSchema,
   type HomepageSettingsInput,
@@ -79,8 +88,30 @@ export const authApi = {
       throw error;
     }
   },
-  login: async (input: LoginInput) => {
-    const me = await api.post('/auth/login', input, meResponseSchema, { skipAuthRedirect: true });
+  /** A session (MeResponse), or a second-factor challenge when the account uses 2FA. */
+  login: async (input: LoginInput): Promise<LoginResponse> => {
+    const res = await api.post('/auth/login', input, loginResponseSchema, {
+      skipAuthRedirect: true,
+    });
+    if ('csrfToken' in res) api.setCsrfToken(res.csrfToken);
+    return res;
+  },
+  /** Second step with a TOTP or recovery code. */
+  verifyCode: async (input: VerifyLoginInput) => {
+    const me = await api.post('/auth/login/verify', input, meResponseSchema, {
+      skipAuthRedirect: true,
+    });
+    api.setCsrfToken(me.csrfToken);
+    return me;
+  },
+  passkeyOptions: (ticket?: string) =>
+    api.post('/auth/passkey/options', ticket ? { ticket } : {}, passkeyOptionsSchema, {
+      skipAuthRedirect: true,
+    }),
+  passkeyVerify: async (challengeId: string, response: unknown) => {
+    const me = await api.post('/auth/passkey/verify', { challengeId, response }, meResponseSchema, {
+      skipAuthRedirect: true,
+    });
     api.setCsrfToken(me.csrfToken);
     return me;
   },
@@ -89,6 +120,22 @@ export const authApi = {
     api.setCsrfToken(null);
   },
   changePassword: (input: ChangePasswordInput) => api.post('/auth/password', input),
+};
+
+export const twoFactorApi = {
+  status: () => api.get('/auth/2fa', twoFactorStatusSchema),
+  startTotp: () => api.post('/auth/2fa/totp/setup', undefined, totpSetupSchema),
+  enableTotp: (code: string) => api.post('/auth/2fa/totp/enable', { code }, recoveryCodesSchema),
+  disableTotp: (password: string) => api.post('/auth/2fa/totp/disable', { password }),
+  regenerateCodes: (password: string) =>
+    api.post('/auth/2fa/recovery-codes', { password }, recoveryCodesSchema),
+  passkeyOptions: () => api.post('/auth/2fa/passkeys/options', undefined, passkeyOptionsSchema),
+  addPasskey: (input: { name: string; challengeId: string; response: unknown }) =>
+    api.post('/auth/2fa/passkeys', input, registeredPasskeySchema),
+  renamePasskey: (id: number, name: string) =>
+    api.patch(`/auth/2fa/passkeys/${id}`, { name }, passkeySchema),
+  removePasskey: (id: number, password: string) =>
+    api.request(`/auth/2fa/passkeys/${id}`, { method: 'DELETE', body: { password } }),
 };
 
 export const cloudflareApi = {

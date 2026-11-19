@@ -18,8 +18,44 @@ export const users = sqliteTable('users', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   email: text('email').notNull().unique(),
   passwordHash: text('password_hash').notNull(),
+  /** TOTP secret (base32), encrypted with the SecretBox. NULL = no authenticator app. */
+  totpSecretEnc: text('totp_secret_enc'),
+  /** Last TOTP time step accepted, so a code cannot be used twice. */
+  totpLastStep: integer('totp_last_step'),
+  /** SHA-256 hashes of the unused recovery codes. */
+  recoveryCodes: text('recovery_codes', { mode: 'json' })
+    .$type<string[]>()
+    .notNull()
+    .default(sql`'[]'`),
   createdAt: timestamp('created_at'),
 });
+
+/** WebAuthn credentials (passkeys and security keys) of the admin. */
+export const passkeys = sqliteTable(
+  'passkeys',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    /** Credential id, base64url. */
+    credentialId: text('credential_id').notNull().unique(),
+    /** COSE public key, base64url. */
+    publicKey: text('public_key').notNull(),
+    counter: integer('counter').notNull().default(0),
+    transports: text('transports', { mode: 'json' })
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'`),
+    /** Host name the passkey is bound to (WebAuthn RP ID), e.g. `burrow.example.com`. */
+    rpId: text('rp_id').notNull(),
+    backedUp: integer('backed_up', { mode: 'boolean' }).notNull().default(false),
+    lastUsedAt: text('last_used_at'),
+    createdAt: timestamp('created_at'),
+  },
+  (t) => [index('passkeys_user_idx').on(t.userId)],
+);
 
 /** Server-side sessions. `id` is the SHA-256 of the cookie value, never the value itself. */
 export const sessions = sqliteTable(
@@ -210,6 +246,7 @@ export const auditLog = sqliteTable('audit_log', {
 
 export type UserRow = typeof users.$inferSelect;
 export type SessionRow = typeof sessions.$inferSelect;
+export type PasskeyRow = typeof passkeys.$inferSelect;
 export type ApiTokenRow = typeof apiTokens.$inferSelect;
 export type ZoneRow = typeof zones.$inferSelect;
 export type TunnelRow = typeof tunnels.$inferSelect;

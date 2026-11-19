@@ -2,7 +2,12 @@ import {
   changePasswordSchema,
   createAdminSchema,
   loginSchema,
+  passkeyLoginOptionsInputSchema,
+  passkeyLoginVerifySchema,
+  verifyLoginSchema,
+  type LoginResponse,
   type MeResponse,
+  type PasskeyOptions,
   type SetupStatus,
 } from '@burrow/shared';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
@@ -15,12 +20,13 @@ import {
   SESSION_COOKIE,
   setSessionCookie,
   userId,
+  webAuthnOrigin,
 } from '../http/session.js';
 
 /** Login and setup attempts allowed per IP and minute. */
 const LOGIN_RATE_LIMIT = { max: 5, timeWindow: '1 minute' };
 
-/** Setup, login, logout, current user and password change. */
+/** Setup, login (with the optional second factor), logout, current user and password change. */
 export async function authRoutes(app: FastifyInstance, ctx: AppContext): Promise<void> {
   const startSession = (
     req: FastifyRequest,
@@ -53,9 +59,57 @@ export async function authRoutes(app: FastifyInstance, ctx: AppContext): Promise
   app.post('/api/auth/login', { config: { rateLimit: LOGIN_RATE_LIMIT } }, async (req, reply) => {
     const input = loginSchema.parse(req.body);
     const user = await ctx.auth.login(input.email, input.password);
+    const methods = ctx.twoFactor.methods(user.id);
+    if (methods.length > 0) {
+      const body: LoginResponse = {
+        mfaRequired: true,
+        ticket: ctx.twoFactor.createTicket(user.id),
+        methods,
+      };
+      return reply.send(body);
+    }
     ctx.audit.record(user.id, 'auth.login');
     return reply.send(startSession(req, reply, user));
   });
+
+  /** Second step: a code from the authenticator app, or a recovery code. */
+  app.post(
+    '/api/auth/login/verify',
+    { config: { rateLimit: LOGIN_RATE_LIMIT } },
+    async (req, reply) => {
+      const input = verifyLoginSchema.parse(req.body);
+      const { userId: id, method } = ctx.twoFactor.verifyTicketCode(input.ticket, input.code);
+      const user = ctx.auth.findUser(id);
+      ctx.audit.record(user.id, 'auth.login', method === 'recovery' ? 'recovery code' : 'TOTP');
+      return reply.send(startSession(req, reply, user));
+    },
+  );
+
+  /** Passkey sign-in, after the password (with `ticket`) or on its own. */
+  app.post(
+    '/api/auth/passkey/options',
+    { config: { rateLimit: LOGIN_RATE_LIMIT } },
+    async (req): Promise<PasskeyOptions> => {
+      const input = passkeyLoginOptionsInputSchema.parse(req.body ?? {});
+      return ctx.twoFactor.loginOptions(webAuthnOrigin(req), input.ticket);
+    },
+  );
+
+  app.post(
+    '/api/auth/passkey/verify',
+    { config: { rateLimit: LOGIN_RATE_LIMIT } },
+    async (req, reply) => {
+      const input = passkeyLoginVerifySchema.parse(req.body);
+      const id = await ctx.twoFactor.verifyLogin(
+        input.challengeId,
+        input.response,
+        webAuthnOrigin(req),
+      );
+      const user = ctx.auth.findUser(id);
+      ctx.audit.record(user.id, 'auth.login', 'passkey');
+      return reply.send(startSession(req, reply, user));
+    },
+  );
 
   app.post('/api/auth/logout', async (req, reply) => {
     assertCsrf(req);
