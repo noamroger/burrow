@@ -30,6 +30,11 @@ export function RequiredPermissionsTable() {
               <td className="px-3 py-2 align-top">
                 <span className="text-fg-muted">{p.scope} › </span>
                 <span className="font-medium text-fg">{p.group}</span>
+                {'optional' in p && p.optional ? (
+                  <span className="ml-1.5 rounded bg-surface-2 px-1.5 py-0.5 text-[11px] text-fg-muted">
+                    {t('common.optional')}
+                  </span>
+                ) : null}
                 <p className="mt-0.5 text-xs text-fg-muted sm:hidden">{p.why}</p>
               </td>
               <td className="px-3 py-2 align-top">
@@ -103,15 +108,28 @@ export function PermissionChecks({ checks }: { checks: PermissionCheck[] }) {
           <span
             className={cn(
               'mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full',
-              check.ok ? 'bg-success-soft text-success' : 'bg-danger-soft text-danger',
+              check.ok
+                ? 'bg-success-soft text-success'
+                : check.optional
+                  ? 'bg-surface-2 text-fg-muted'
+                  : 'bg-danger-soft text-danger',
             )}
           >
-            <Icon name={check.ok ? 'check' : 'x'} size={11} strokeWidth={3} />
+            <Icon
+              name={check.ok ? 'check' : check.optional ? 'info' : 'x'}
+              size={11}
+              strokeWidth={3}
+            />
           </span>
           <span className="min-w-0">
             <span className="text-fg">{check.name}</span>
             <span className="sr-only">
-              : {check.ok ? t('token.checkOk') : t('token.checkMissing')}
+              :{' '}
+              {check.ok
+                ? t('token.checkOk')
+                : check.optional
+                  ? t('token.checkOptional')
+                  : t('token.checkMissing')}
             </span>
             {check.message ? (
               <span className="block text-xs text-fg-muted">{check.message}</span>

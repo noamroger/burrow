@@ -1,5 +1,7 @@
 import {
+  accessSessionDurationSchema,
   buildHostname,
+  type AccessSessionDuration,
   type OriginHealth,
   type ProxyHost,
   type ProxyHostParsedInput,
@@ -31,7 +33,8 @@ export interface HostServiceOptions {
  *
  * - Create is all-or-nothing: if Cloudflare refuses, the row is removed and
  *   the error returned (409 `DNS_CONFLICT` when a foreign record exists).
- * - Update keeps the new values; a DNS conflict reverts them.
+ * - Update keeps the new values; a DNS conflict or a Cloudflare Access
+ *   failure reverts them (the host goes back to how it was published).
  * - Delete removes the row, then the ingress rule and Burrow's CNAME. If
  *   Cloudflare is unreachable, the next reconciliation cleans up.
  */
@@ -59,6 +62,12 @@ export class HostService {
         noTLSVerify: row.noTlsVerify,
         httpHostHeader: row.httpHostHeader,
         originServerName: row.originServerName,
+      },
+      access: {
+        enabled: row.accessEnabled,
+        emails: row.accessEmails,
+        emailDomains: row.accessEmailDomains,
+        sessionDuration: toSessionDuration(row.accessSessionDuration),
       },
       sync: { status: row.syncStatus, error: row.syncError, lastSyncedAt: row.lastSyncedAt },
       health,
@@ -140,6 +149,10 @@ export class HostService {
       noTlsVerify: input.options.noTLSVerify,
       httpHostHeader: input.options.httpHostHeader,
       originServerName: input.options.originServerName,
+      accessEnabled: input.access.enabled,
+      accessEmails: [...new Set(input.access.emails)],
+      accessEmailDomains: [...new Set(input.access.emailDomains)],
+      accessSessionDuration: input.access.sessionDuration,
     };
   }
 
@@ -153,7 +166,7 @@ export class HostService {
       .get();
 
     const scope = [{ zoneId: row.zoneId, hostname }];
-    const failure = await this.syncAndGetError(row.id, scope);
+    const failure = (await this.syncAndGetResult(row.id, scope)).error;
     if (failure) {
       this.opts.db.delete(proxyHosts).where(eq(proxyHosts.id, row.id)).run();
       // Remove anything that may have been published before the failure.
@@ -179,8 +192,9 @@ export class HostService {
       { zoneId: before.zoneId, hostname: before.hostname },
       { zoneId: input.zoneId, hostname },
     ]);
-    const failure = await this.syncAndGetError(id, scope);
-    if (failure?.code === 'DNS_CONFLICT') {
+    const result = await this.syncAndGetResult(id, scope);
+    const failure = result.error;
+    if (failure && (failure.code === 'DNS_CONFLICT' || result.stage === 'access')) {
       const { id: _id, createdAt: _c, ...previous } = before;
       this.opts.db.update(proxyHosts).set(previous).where(eq(proxyHosts.id, id)).run();
       await this.opts.reconciler.sync({ scope }).catch(() => undefined);
@@ -221,13 +235,19 @@ export class HostService {
     await this.opts.health.checkAll(this.rows().filter((r) => r.enabled));
   }
 
-  private async syncAndGetError(id: number, scope: SyncScopeItem[]): Promise<AppError | null> {
+  private async syncAndGetResult(
+    id: number,
+    scope: SyncScopeItem[],
+  ): Promise<{ error: AppError | null; stage?: 'access' }> {
     const outcome = await this.opts.reconciler.sync({ scope });
     const result = outcome.hosts.get(id);
     if (result && !result.ok) {
-      return result.error ?? new AppError('CLOUDFLARE_API_ERROR', 'Synchronisation failed', 502);
+      return {
+        error: result.error ?? new AppError('CLOUDFLARE_API_ERROR', 'Synchronisation failed', 502),
+        stage: result.stage,
+      };
     }
-    return null;
+    return { error: null };
   }
 
   private probeLater(id: number): void {
@@ -235,6 +255,11 @@ export class HostService {
     if (!row || !row.enabled) return;
     void this.opts.health.check(id, row).catch(() => undefined);
   }
+}
+
+function toSessionDuration(value: string): AccessSessionDuration {
+  const parsed = accessSessionDurationSchema.safeParse(value);
+  return parsed.success ? parsed.data : '24h';
 }
 
 function uniqueScope(items: SyncScopeItem[]): SyncScopeItem[] {

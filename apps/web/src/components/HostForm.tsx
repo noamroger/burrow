@@ -7,8 +7,10 @@
  */
 import { useId, useMemo, useState, type FormEvent } from 'react';
 import {
+  ACCESS_SESSION_DURATIONS,
   buildHostname,
   proxyHostInputSchema,
+  type AccessSessionDuration,
   type ProxyHost,
   type ProxyHostInput,
   type Zone,
@@ -20,7 +22,7 @@ import { fieldErrors } from '../lib/zod';
 import { Icon } from './Icon';
 import { Alert } from './ui/Alert';
 import { Button } from './ui/Button';
-import { Checkbox, describedBy, Field, Input, Select } from './ui/Field';
+import { Checkbox, describedBy, Field, Input, Select, Textarea } from './ui/Field';
 
 export interface HostFormValues {
   subdomain: string;
@@ -31,6 +33,20 @@ export interface HostFormValues {
   noTLSVerify: boolean;
   httpHostHeader: string;
   originServerName: string;
+  /** Cloudflare Access: require sign-in. */
+  accessEnabled: boolean;
+  /** Free text, one email per line (commas and spaces also work). */
+  accessEmails: string;
+  accessEmailDomains: string;
+  accessSessionDuration: AccessSessionDuration;
+}
+
+/** Split a free-text list on new lines, commas, semicolons and spaces. */
+export function splitList(value: string): string[] {
+  return value
+    .split(/[\s,;]+/)
+    .map((v) => v.trim())
+    .filter(Boolean);
 }
 
 export const SERVICE_EXAMPLES = [
@@ -50,6 +66,10 @@ export function initialValues(host: ProxyHost | undefined, zones: Zone[]): HostF
       noTLSVerify: host.options.noTLSVerify,
       httpHostHeader: host.options.httpHostHeader,
       originServerName: host.options.originServerName,
+      accessEnabled: host.access.enabled,
+      accessEmails: host.access.emails.join('\n'),
+      accessEmailDomains: host.access.emailDomains.join('\n'),
+      accessSessionDuration: host.access.sessionDuration,
     };
   }
   return {
@@ -61,6 +81,10 @@ export function initialValues(host: ProxyHost | undefined, zones: Zone[]): HostF
     noTLSVerify: false,
     httpHostHeader: '',
     originServerName: '',
+    accessEnabled: false,
+    accessEmails: '',
+    accessEmailDomains: '',
+    accessSessionDuration: '24h',
   };
 }
 
@@ -76,7 +100,19 @@ export function toInput(values: HostFormValues): ProxyHostInput {
       httpHostHeader: values.httpHostHeader,
       originServerName: values.originServerName,
     },
+    access: {
+      enabled: values.accessEnabled,
+      emails: splitList(values.accessEmails),
+      emailDomains: splitList(values.accessEmailDomains),
+      sessionDuration: values.accessSessionDuration,
+    },
   };
+}
+
+/** First error under a key prefix (`access.emails.2` → shown on the emails field). */
+function errorUnder(errors: Record<string, string>, prefix: string): string | undefined {
+  const key = Object.keys(errors).find((k) => k === prefix || k.startsWith(`${prefix}.`));
+  return key ? errors[key] : undefined;
 }
 
 /** Field errors for the form, keyed like the zod paths (`options.httpHostHeader`). */
@@ -276,6 +312,95 @@ export function HostForm({ host, zones, onSubmit, onCancel }: HostFormProps) {
         />
       </Field>
 
+      <fieldset className="space-y-4 rounded-lg border border-border px-3.5 py-3.5">
+        <legend className="sr-only">{t('host.access.legend')}</legend>
+        <Checkbox
+          id={id('accessEnabled')}
+          checked={values.accessEnabled}
+          onChange={(e) => set('accessEnabled', e.target.checked)}
+          label={
+            <span className="inline-flex items-center gap-1.5">
+              <Icon name="shield" size={14} className="text-accent" />
+              {t('host.access.enabled')}
+            </span>
+          }
+          description={t('host.access.enabledHint')}
+        />
+        {values.accessEnabled ? (
+          <div className="space-y-4 border-t border-border pt-4">
+            <Field
+              id={id('accessEmails')}
+              label={t('host.access.emails')}
+              hint={t('host.access.emailsHint')}
+              error={errorUnder(errors, 'access.emails')}
+            >
+              <Textarea
+                id={id('accessEmails')}
+                value={values.accessEmails}
+                onChange={(e) => set('accessEmails', e.target.value)}
+                placeholder={'me@example.com\nfriend@example.net'}
+                autoComplete="off"
+                autoCapitalize="none"
+                spellCheck={false}
+                rows={3}
+                className="font-mono"
+                aria-invalid={!!errorUnder(errors, 'access.emails')}
+                aria-describedby={describedBy(id('accessEmails'), {
+                  hint: true,
+                  error: errorUnder(errors, 'access.emails'),
+                })}
+              />
+            </Field>
+            <Field
+              id={id('accessEmailDomains')}
+              label={t('host.access.emailDomains')}
+              aside={t('common.optional')}
+              hint={t('host.access.emailDomainsHint')}
+              error={errorUnder(errors, 'access.emailDomains')}
+            >
+              <Input
+                id={id('accessEmailDomains')}
+                value={values.accessEmailDomains}
+                onChange={(e) => set('accessEmailDomains', e.target.value)}
+                placeholder="family.example"
+                autoComplete="off"
+                autoCapitalize="none"
+                spellCheck={false}
+                className="font-mono"
+                aria-invalid={!!errorUnder(errors, 'access.emailDomains')}
+                aria-describedby={describedBy(id('accessEmailDomains'), {
+                  hint: true,
+                  error: errorUnder(errors, 'access.emailDomains'),
+                })}
+              />
+            </Field>
+            <Field
+              id={id('accessSessionDuration')}
+              label={t('host.access.sessionDuration')}
+              hint={t('host.access.sessionDurationHint')}
+            >
+              <Select
+                id={id('accessSessionDuration')}
+                value={values.accessSessionDuration}
+                onChange={(e) =>
+                  set('accessSessionDuration', e.target.value as AccessSessionDuration)
+                }
+                aria-describedby={describedBy(id('accessSessionDuration'), { hint: true })}
+              >
+                {ACCESS_SESSION_DURATIONS.map((d) => (
+                  <option key={d} value={d}>
+                    {t(`host.access.duration.${d}`)}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <p className="text-xs leading-relaxed text-fg-muted">
+              {t('host.access.wholeHostname', { hostname: fqdn || '…' })}
+            </p>
+          </div>
+        ) : null}
+      </fieldset>
+
       <details className="group rounded-lg border border-border" open={advancedSet || undefined}>
         <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3.5 py-2.5 text-sm font-medium text-fg select-none">
           <span>{t('host.advanced')}</span>
@@ -352,6 +477,13 @@ function ServerError({ error, hostname }: { error: unknown; hostname: string }) 
       <Alert tone="danger" title={t('host.dnsConflictTitle', { hostname })}>
         <p>{t('host.dnsConflictBody')}</p>
         {error.message ? <p className="mt-1 text-xs opacity-80">{error.message}</p> : null}
+      </Alert>
+    );
+  }
+  if (isApiError(error, 'ACCESS_CONFLICT')) {
+    return (
+      <Alert tone="danger" title={t('host.access.conflictTitle', { hostname })}>
+        {error.message}
       </Alert>
     );
   }

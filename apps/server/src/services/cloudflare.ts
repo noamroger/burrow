@@ -28,6 +28,7 @@ export const PERMISSION_NAMES = {
   account: 'Account › Account Settings › Read',
   dns: 'Zone › DNS › Edit',
   zone: 'Zone › Zone › Read',
+  access: 'Account › Access: Apps and Policies › Edit',
 } as const;
 
 /** Result of saving a token: either saved, or the user must pick an account first. */
@@ -338,6 +339,26 @@ export class CloudflareService {
       } catch (err) {
         checks.push({ name: PERMISSION_NAMES.dns, ok: false, message: errorMessage(err) });
       }
+    }
+
+    // Optional: only needed to protect hosts with Cloudflare Access.
+    try {
+      await client.requestEnvelope('GET', `/accounts/${accountId}/access/apps`, {
+        query: { per_page: 1 },
+      });
+      checks.push({
+        name: PERMISSION_NAMES.access,
+        ok: true,
+        optional: true,
+        message: 'Private hosts can be protected with Cloudflare Access',
+      });
+    } catch (err) {
+      checks.push({
+        name: PERMISSION_NAMES.access,
+        ok: false,
+        optional: true,
+        message: `Optional, needed only to protect hosts with Cloudflare Access: ${errorMessage(err)}`,
+      });
     }
     return checks;
   }

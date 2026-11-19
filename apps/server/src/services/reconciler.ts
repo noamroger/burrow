@@ -2,7 +2,7 @@ import type { SyncAction, SyncResult } from '@burrow/shared';
 import { eq } from 'drizzle-orm';
 import { EventEmitter } from 'node:events';
 import type { Logger } from 'pino';
-import type { CloudflareClient } from '../cloudflare/client.js';
+import { CloudflareApiError, type CloudflareClient } from '../cloudflare/client.js';
 import type { CfIngressRule } from '../cloudflare/types.js';
 import type { Db } from '../db/client.js';
 import { proxyHosts, zones, type ProxyHostRow } from '../db/schema.js';
@@ -10,7 +10,14 @@ import { SettingKeys, type SettingsRepository } from '../db/settings.js';
 import { AppError, errorMessage } from '../lib/errors.js';
 import { Mutex } from '../lib/mutex.js';
 import { nowIso } from '../lib/time.js';
-import type { CloudflareService } from './cloudflare.js';
+import {
+  desiredAccess,
+  planAccess,
+  type AccessAction,
+  type AccessActual,
+  type AccessHost,
+} from './access-plan.js';
+import { PERMISSION_NAMES, type CloudflareService } from './cloudflare.js';
 import { keyOfRule } from './ingress.js';
 import { plan, type PlanHost, type ZonedDnsRecord } from './plan.js';
 import type { TunnelService } from './tunnel.js';
@@ -25,6 +32,8 @@ export interface SyncScopeItem {
 export interface HostSyncResult {
   ok: boolean;
   error?: AppError;
+  /** `access` when the failure comes from Cloudflare Access (the host was not published). */
+  stage?: 'access';
 }
 
 export interface SyncOutcome {
@@ -45,6 +54,58 @@ const EMPTY_RESULT: SyncResult = { startedAt: null, finishedAt: null, ok: true, 
 function toAppError(err: unknown): AppError {
   if (err instanceof AppError) return err;
   return new AppError('CLOUDFLARE_API_ERROR', errorMessage(err), 502);
+}
+
+export function toAccessHost(row: ProxyHostRow): AccessHost {
+  return {
+    id: row.id,
+    hostname: row.hostname,
+    enabled: row.enabled,
+    accessEnabled: row.accessEnabled,
+    accessEmails: row.accessEmails,
+    accessEmailDomains: row.accessEmailDomains,
+    accessSessionDuration: row.accessSessionDuration,
+  };
+}
+
+/** Explain Access failures in terms the user can act on. */
+function toAccessError(err: unknown): AppError {
+  const e = toAppError(err);
+  if (e.code === 'CLOUDFLARE_PERMISSION_MISSING') {
+    return new AppError(
+      e.code,
+      `The API token cannot manage Cloudflare Access. Add the "${PERMISSION_NAMES.access}" permission to protect hosts.`,
+      400,
+      e.details,
+    );
+  }
+  if (err instanceof CloudflareApiError && err.httpStatus >= 400 && err.httpStatus < 500) {
+    return new AppError(
+      e.code,
+      `${e.message}. If Zero Trust was never used on this account, open Zero Trust in the Cloudflare dashboard once to choose a team name.`,
+      e.statusCode,
+      e.details,
+    );
+  }
+  return e;
+}
+
+/** Ignore "not found" on deletes: the resource is already gone. */
+async function ignoreNotFound<T>(p: Promise<T>): Promise<void> {
+  try {
+    await p;
+  } catch (err) {
+    if (err instanceof CloudflareApiError && err.isNotFound) return;
+    throw err;
+  }
+}
+
+/** What the Access step tells the rest of the run. */
+interface AccessStep {
+  /** Hostnames that must not be published this run (protection wanted but not in place). */
+  blocked: Set<string>;
+  /** Delete Access resources no longer wanted. Call only once routes and DNS are removed. */
+  finish: () => Promise<void>;
 }
 
 export function toPlanHost(row: ProxyHostRow): PlanHost {
@@ -107,9 +168,9 @@ export class Reconciler extends EventEmitter<{ synced: [SyncResult] }> {
     const recordIds = new Map<string, string>();
     let rows: ProxyHostRow[] = db.select().from(proxyHosts).all();
 
-    const fail = (id: number, error: AppError) => {
+    const fail = (id: number, error: AppError, stage?: 'access') => {
       if (!hostResults.get(id) || hostResults.get(id)!.ok)
-        hostResults.set(id, { ok: false, error });
+        hostResults.set(id, { ok: false, error, stage });
     };
     const inScope = (row: ProxyHostRow) =>
       !scope || scope.some((s) => s.hostname.toLowerCase() === row.hostname.toLowerCase());
@@ -128,14 +189,36 @@ export class Reconciler extends EventEmitter<{ synced: [SyncResult] }> {
       const managedKeys = settings.get<string[]>(SettingKeys.managedIngress) ?? [];
       const { records, unavailable } = await this.loadDns(client, rows, scope);
 
-      const p = plan(rows.map(toPlanHost), {
+      const planHosts = rows.map(toPlanHost);
+      const actualState = {
         tunnelId: tunnel.id,
         ingress: currentIngress,
         managedKeys,
         dnsRecords: records,
         unavailableZones: unavailable,
         dnsScope: scope ? new Set(scope.map((s) => s.hostname.toLowerCase())) : undefined,
+      };
+
+      // Cloudflare Access comes first, so a protected hostname is never public,
+      // not even for a moment. Hostnames with a DNS conflict are skipped: Burrow
+      // will not publish them, so it must not put an Access app in front of them.
+      const dnsConflicts = new Set(
+        plan(planHosts, actualState)
+          .actions.filter((a) => a.kind === 'host.conflict')
+          .map((a) => a.hostname.toLowerCase()),
+      );
+      const access = await this.syncAccess(client, accountId, rows, scope, dnsConflicts, {
+        actions,
+        fail,
       });
+
+      // Fail closed: a host whose protection could not be put in place is unpublished.
+      const p = plan(
+        planHosts.map((h) =>
+          access.blocked.has(h.hostname.toLowerCase()) ? { ...h, enabled: false } : h,
+        ),
+        actualState,
+      );
       for (const [id, e] of p.hostErrors) {
         fail(id, new AppError(e.code, e.message, e.code === 'DNS_CONFLICT' ? 409 : 502));
       }
@@ -258,6 +341,10 @@ export class Reconciler extends EventEmitter<{ synced: [SyncResult] }> {
 
       for (const [hostname, id] of p.dnsRecordIds)
         if (!recordIds.has(hostname)) recordIds.set(hostname, id);
+
+      // Remove protection only once the routes it guarded are gone: if the
+      // tunnel configuration could not be written, keep it for the next run.
+      if (!ingressFailed) await access.finish();
     } catch (err) {
       const e = toAppError(err);
       logger.warn({ err: e.message }, 'reconciliation failed');
@@ -282,6 +369,141 @@ export class Reconciler extends EventEmitter<{ synced: [SyncResult] }> {
     }
     this.emit('synced', result);
     return { result, hosts: hostResults };
+  }
+
+  /**
+   * Create or update the Access applications of protected hosts, and prepare
+   * the deletion of the ones no longer wanted. Nothing is listed or written
+   * when no host is protected and Burrow manages no Access application, so
+   * the Access permission stays optional.
+   */
+  private async syncAccess(
+    client: CloudflareClient,
+    accountId: string,
+    rows: ProxyHostRow[],
+    scope: SyncScopeItem[] | undefined,
+    skip: Set<string>,
+    out: {
+      actions: SyncAction[];
+      fail: (id: number, error: AppError, stage?: 'access') => void;
+    },
+  ): Promise<AccessStep> {
+    const { settings } = this.opts;
+    const { actions, fail } = out;
+    const managed = new Set(settings.get<string[]>(SettingKeys.managedAccess) ?? []);
+    const scopeSet = scope ? new Set(scope.map((s) => s.hostname.toLowerCase())) : undefined;
+    const inScope = (h: string) => !scopeSet || scopeSet.has(h);
+    const wanted = desiredAccess(rows.map(toAccessHost));
+    for (const h of skip) wanted.delete(h);
+
+    const blocked = new Set<string>();
+    const noop: AccessStep = { blocked, finish: async () => undefined };
+    if (![...wanted.keys(), ...managed].some(inScope)) return noop;
+
+    let actual: AccessActual;
+    try {
+      const [apps, policies] = await Promise.all([
+        client.listAccessApps(accountId),
+        client.listAccessPolicies(accountId),
+      ]);
+      actual = { apps, policies };
+    } catch (err) {
+      const e = toAccessError(err);
+      actions.push({
+        kind: 'access.update',
+        target: 'Cloudflare Access',
+        ok: false,
+        error: e.message,
+      });
+      for (const [hostname, d] of wanted) {
+        if (!inScope(hostname)) continue;
+        for (const id of d.hostIds) fail(id, e, 'access');
+        // Protection never confirmed: do not publish. Already protected: keep as is.
+        if (!managed.has(hostname)) blocked.add(hostname);
+      }
+      return noop;
+    }
+
+    const ap = planAccess(wanted, actual, { managed, scope: scopeSet });
+    for (const hostname of ap.conflicts.keys()) blocked.add(hostname);
+    const saveManaged = () => settings.set(SettingKeys.managedAccess, [...managed].sort());
+
+    for (const action of ap.ensure) {
+      if (action.kind === 'access.conflict') {
+        actions.push({
+          kind: action.kind,
+          target: action.hostname,
+          ok: false,
+          error: action.reason,
+        });
+        const e = new AppError('ACCESS_CONFLICT', action.reason, 409);
+        for (const id of action.hostIds) fail(id, e, 'access');
+        continue;
+      }
+      if (action.kind !== 'access.create' && action.kind !== 'access.update') continue;
+      try {
+        await this.applyAccess(client, accountId, action);
+        managed.add(action.hostname);
+        actions.push({ kind: action.kind, target: action.hostname, ok: true, error: null });
+      } catch (err) {
+        const e = toAccessError(err);
+        actions.push({ kind: action.kind, target: action.hostname, ok: false, error: e.message });
+        for (const id of action.hostIds) fail(id, e, 'access');
+        // A failed update leaves the previous policy in place; a failed create leaves none.
+        if (action.kind === 'access.create') blocked.add(action.hostname);
+      }
+    }
+    saveManaged();
+
+    return {
+      blocked,
+      finish: async () => {
+        for (const action of ap.remove) {
+          if (action.kind !== 'access.delete') continue;
+          try {
+            if (action.appId) await ignoreNotFound(client.deleteAccessApp(accountId, action.appId));
+            for (const id of action.policyIds) {
+              await ignoreNotFound(client.deleteAccessPolicy(accountId, id));
+            }
+            if (!wanted.has(action.hostname)) managed.delete(action.hostname);
+            actions.push({ kind: 'access.delete', target: action.hostname, ok: true, error: null });
+          } catch (err) {
+            actions.push({
+              kind: 'access.delete',
+              target: action.hostname,
+              ok: false,
+              error: toAccessError(err).message,
+            });
+          }
+        }
+        saveManaged();
+      },
+    };
+  }
+
+  /** Execute one create/update: the policy first, then the application linked to it. */
+  private async applyAccess(
+    client: CloudflareClient,
+    accountId: string,
+    action: Extract<AccessAction, { kind: 'access.create' | 'access.update' }>,
+  ): Promise<void> {
+    const existing = action.kind === 'access.create' ? action.existingPolicyId : action.policyId;
+    let policyId = existing;
+    if (policyId) {
+      if (action.policyChanged) await client.updateAccessPolicy(accountId, policyId, action.policy);
+    } else {
+      policyId = (await client.createAccessPolicy(accountId, action.policy)).id;
+    }
+    const body = { ...action.app, policies: [{ id: policyId, precedence: 1 }] };
+    try {
+      if (action.kind === 'access.create') await client.createAccessApp(accountId, body);
+      else if (action.appChanged || !existing) {
+        await client.updateAccessApp(accountId, action.appId, body);
+      }
+    } catch (err) {
+      if (!existing) await client.deleteAccessPolicy(accountId, policyId).catch(() => undefined);
+      throw err;
+    }
   }
 
   /** Write each host's sync status back to SQLite. */

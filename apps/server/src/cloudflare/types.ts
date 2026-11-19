@@ -122,3 +122,59 @@ export interface CfDnsRecordInput {
   ttl: number;
   comment: string;
 }
+
+/* ---- Cloudflare Access (Zero Trust) ---- */
+
+/** One rule of an Access policy, e.g. `{ email: { email } }` or `{ email_domain: { domain } }`. */
+export type CfAccessRule =
+  { email: { email: string } } | { email_domain: { domain: string } } | Record<string, unknown>;
+
+/** A reusable Access policy (`/accounts/{id}/access/policies`). */
+export interface CfAccessPolicy {
+  id: string;
+  name: string;
+  decision: 'allow' | 'deny' | 'non_identity' | 'bypass' | string;
+  include: CfAccessRule[];
+  exclude?: CfAccessRule[];
+  require?: CfAccessRule[];
+  session_duration?: string;
+  app_count?: number;
+  reusable?: boolean;
+}
+
+export interface CfAccessPolicyInput {
+  name: string;
+  decision: 'allow';
+  include: CfAccessRule[];
+  exclude: CfAccessRule[];
+  require: CfAccessRule[];
+}
+
+export interface CfAccessDestination {
+  type: 'public' | 'private' | string;
+  uri?: string;
+  [key: string]: unknown;
+}
+
+/** An Access application (`/accounts/{id}/access/apps`). Only the fields Burrow reads. */
+export interface CfAccessApp {
+  id: string;
+  name: string;
+  type: string;
+  domain?: string;
+  destinations?: CfAccessDestination[];
+  session_duration?: string;
+  aud?: string;
+  policies?: Array<{ id: string; precedence?: number; name?: string }>;
+}
+
+/** Body Burrow sends to create or replace a self-hosted application. */
+export interface CfAccessAppInput {
+  name: string;
+  type: 'self_hosted';
+  domain: string;
+  destinations: Array<{ type: 'public'; uri: string }>;
+  session_duration: string;
+  app_launcher_visible: boolean;
+  policies: Array<{ id: string; precedence: number }>;
+}

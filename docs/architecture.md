@@ -27,7 +27,7 @@ for V2. Decisions with real trade-offs are recorded in [`docs/adr/`](adr/).
                         └───────────────────────────────────────────────────────────────────────────────┘
                                  │ HTTPS (api.cloudflare.com/client/v4)        │ QUIC/HTTP2 outbound
                                  ▼                                             ▼
-                         Cloudflare API (tunnels, DNS, zones)          Cloudflare edge
+                    Cloudflare API (tunnels, DNS, zones, Access)       Cloudflare edge
 ```
 
 Everything runs in **one Node.js process** plus **one cloudflared child
@@ -66,8 +66,12 @@ its types from them. Changing the API means changing this package first.
 | `audit_log`   | Who changed what (no secrets)                    | `id`, `user_id`, `action`, `target`, `created_at`                                                                                                                                                                                                                                                                |
 
 V2 extension points: `tunnels` table (multi-tunnel, `proxy_hosts.tunnel_id`),
-`proxy_hosts.source` (`manual` \| `docker`), `access_policies`,
-`notification_channels`. Migrations are versioned with Drizzle Kit and applied
+`proxy_hosts.source` (`manual` \| `docker`), `notification_channels`.
+
+Cloudflare Access protection lives on `proxy_hosts` too: `access_enabled`,
+`access_emails` (JSON array), `access_email_domains` (JSON array),
+`access_session_duration`. The `settings` key `access.managed_hostnames` lists
+the hostnames this instance created an Access application for (see §6.1). Migrations are versioned with Drizzle Kit and applied
 automatically at startup.
 
 ## 4. Secrets
@@ -139,6 +143,30 @@ them with the live config and DNS records, and:
 The reconciler is a pure function `plan(desired, actual) → actions[]` plus an
 executor. The pure part is unit-tested exhaustively without network.
 
+### 6.1 Cloudflare Access (private hosts)
+
+Decided in [ADR 0005](adr/0005-cloudflare-access.md). A protected hostname
+gets one self-hosted Access application and one reusable "allow" policy, both
+named `[Burrow] <hostname>`. A run goes:
+
+1. Plan ingress and DNS once, only to learn which hostnames have a DNS
+   conflict: Burrow will not put an Access app in front of those.
+2. If any host is protected, or Burrow still manages an Access app: list the
+   apps and reusable policies, then compute `planAccess(wanted, actual)`
+   (pure, unit tested). Create or update policies, then apps.
+3. Plan ingress and DNS for real. A hostname whose app could not be created,
+   or that a foreign Access app already covers, is treated as disabled, so it
+   is **not published** (fail closed).
+4. Write ingress and DNS as before.
+5. Only if the tunnel configuration was written: delete the apps (then their
+   policies) that are no longer wanted.
+
+Burrow only deletes apps whose hostname is in `access.managed_hostnames`, so
+two Burrow instances on one account do not delete each other's apps. If the
+Access API cannot be listed, hosts already protected stay published as they
+are, and hosts never protected are not published. When a host update fails
+in the Access step, `HostService` reverts the change, like a DNS conflict.
+
 ## 7. cloudflared supervision
 
 `Supervisor` is a small state machine:
@@ -194,6 +222,8 @@ stopped ──start()──▶ starting ──first "Registered tunnel connectio
 - Least-privilege token, documented in the UI and the README:
   `Account › Cloudflare Tunnel › Edit`, `Zone › DNS › Edit`, `Zone › Zone › Read`
   (scoped to the chosen zones), `Account › Account Settings › Read`.
+  `Account › Access: Apps and Policies › Edit` is optional and only needed
+  for private hosts; the Access API is not called while no host is protected.
 - The container runs as uid 1000, with a read-only root filesystem possible
   (only `/data` and `/tmp` are written).
 
@@ -202,8 +232,8 @@ stopped ──start()──▶ starting ──first "Registered tunnel connectio
 - **Docker auto-discovery**: a `DiscoveryProvider` interface produces desired
   hosts with `source = docker`. The reconciler does not care where desired
   state comes from.
-- **Access applications**: a new service using the same client and reconciler
-  pattern.
+- **Access applications**: done (§6.1). More rule types (IdP groups,
+  countries, service tokens) only extend `desiredPolicy()`.
 - **Multiple tunnels / import**: `tunnels` table, one Supervisor per tunnel.
 - **OpenAPI**: shared zod schemas → `@fastify/swagger` via `fastify-type-provider-zod`.
 - **Notifications**: an internal event bus already emits `host.synced`,

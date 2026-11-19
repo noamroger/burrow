@@ -7,7 +7,8 @@
  * relies on; it is not a full emulator.
  *
  * Tokens: any token of 20+ characters is accepted, except tokens containing
- * `invalid` (401) or `noperm` (403 on tunnel endpoints).
+ * `invalid` (401), `noperm` (403 on tunnel endpoints) or `noaccess` (403 on
+ * Access endpoints).
  */
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
@@ -38,11 +39,34 @@ export interface MockTunnel {
   version: number;
 }
 
+export interface MockAccessPolicy {
+  id: string;
+  name: string;
+  decision: string;
+  include: Array<Record<string, unknown>>;
+  exclude: Array<Record<string, unknown>>;
+  require: Array<Record<string, unknown>>;
+}
+export interface MockAccessApp {
+  id: string;
+  aud: string;
+  name: string;
+  type: string;
+  domain: string;
+  destinations: Array<{ type: string; uri?: string }>;
+  session_duration: string;
+  app_launcher_visible: boolean;
+  /** Linked reusable policy ids, in precedence order. */
+  policyIds: string[];
+}
+
 export interface MockState {
   accounts: Array<{ id: string; name: string }>;
   zones: MockZone[];
   tunnels: MockTunnel[];
   dns: MockDnsRecord[];
+  accessApps: MockAccessApp[];
+  accessPolicies: MockAccessPolicy[];
   requests: Array<{ method: string; path: string }>;
 }
 
@@ -68,6 +92,8 @@ export function initialState(): MockState {
     zones: MOCK_ZONES.map((z) => ({ ...z })),
     tunnels: [],
     dns: [],
+    accessApps: [],
+    accessPolicies: [],
     requests: [],
   };
 }
@@ -103,6 +129,22 @@ export class MockCloudflare {
       ...record,
     };
     this.state.dns.push(full);
+    return full;
+  }
+
+  /** Add an Access application directly (e.g. a foreign one to test conflicts). */
+  addAccessApp(app: Partial<MockAccessApp> & { name: string; domain: string }): MockAccessApp {
+    const full: MockAccessApp = {
+      id: randomUUID(),
+      aud: hex32(randomUUID()) + hex32(randomUUID()),
+      type: 'self_hosted',
+      destinations: [{ type: 'public', uri: app.domain }],
+      session_duration: '24h',
+      app_launcher_visible: true,
+      policyIds: [],
+      ...app,
+    };
+    this.state.accessApps.push(full);
     return full;
   }
 
@@ -303,6 +345,22 @@ export class MockCloudflare {
       }
     }
 
+    /* ---------------- Access (Zero Trust) ---------------- */
+    if ((m = /^\/accounts\/([^/]+)\/access\/(apps|policies)(?:\/([^/]+))?$/.exec(path))) {
+      const [, accountId, kind, id] = m;
+      if (!s.accounts.some((a) => a.id === accountId)) return notFound(res);
+      if (token.includes('noaccess')) {
+        return send(
+          res,
+          403,
+          envelope(null, false, [{ code: 10000, message: 'Authentication error' }]),
+        );
+      }
+      return kind === 'apps'
+        ? this.handleAccessApps(res, method, id, body, q)
+        : this.handleAccessPolicies(res, method, id, body, q);
+    }
+
     /* ---------------- DNS ---------------- */
     if ((m = /^\/zones\/([^/]+)\/dns_records(?:\/([^/]+))?$/.exec(path))) {
       const [, zoneId, recordId] = m;
@@ -360,6 +418,127 @@ export class MockCloudflare {
 
     return notFound(res, `No mock for ${method} ${path}`);
   }
+
+  private handleAccessApps(
+    res: ServerResponse,
+    method: string,
+    id: string | undefined,
+    body: unknown,
+    q: URLSearchParams,
+  ): void {
+    const s = this.state;
+    const render = (a: MockAccessApp) => publicAccessApp(a, s.accessPolicies);
+    if (!id && method === 'GET') return paginate(res, s.accessApps.map(render), q);
+
+    const parse = (): Omit<MockAccessApp, 'id' | 'aud'> | string => {
+      const b = body as Partial<MockAccessApp> & {
+        policies?: Array<string | { id: string; precedence?: number }>;
+      };
+      if (!b?.domain || !b.type) return 'domain and type are required';
+      const links = (b.policies ?? [])
+        .map((p) => (typeof p === 'string' ? { id: p, precedence: 0 } : p))
+        .sort((x, y) => (x.precedence ?? 0) - (y.precedence ?? 0));
+      if (links.some((l) => !s.accessPolicies.some((p) => p.id === l.id))) {
+        return 'policy not found';
+      }
+      return {
+        name: b.name ?? b.domain,
+        type: b.type,
+        domain: b.domain,
+        destinations: b.destinations ?? [{ type: 'public', uri: b.domain }],
+        session_duration: b.session_duration ?? '24h',
+        app_launcher_visible: b.app_launcher_visible ?? true,
+        policyIds: links.map((l) => l.id),
+      };
+    };
+
+    if (!id && method === 'POST') {
+      const parsed = parse();
+      if (typeof parsed === 'string') return badRequest(res, parsed, 12130);
+      const domain = parsed.domain.toLowerCase();
+      if (s.accessApps.some((a) => a.domain.toLowerCase() === domain)) {
+        return badRequest(res, 'access.api.error.conflict: application already exists', 12130);
+      }
+      return send(res, 200, envelope(render(this.addAccessApp(parsed))));
+    }
+    const app = s.accessApps.find((a) => a.id === id);
+    if (!app) return notFound(res, 'Access application not found');
+    if (method === 'GET') return send(res, 200, envelope(render(app)));
+    if (method === 'PUT') {
+      const parsed = parse();
+      if (typeof parsed === 'string') return badRequest(res, parsed, 12130);
+      Object.assign(app, parsed);
+      return send(res, 200, envelope(render(app)));
+    }
+    if (method === 'DELETE') {
+      s.accessApps = s.accessApps.filter((a) => a !== app);
+      return send(res, 200, envelope({ id: app.id }));
+    }
+    return notFound(res);
+  }
+
+  private handleAccessPolicies(
+    res: ServerResponse,
+    method: string,
+    id: string | undefined,
+    body: unknown,
+    q: URLSearchParams,
+  ): void {
+    const s = this.state;
+    const appCount = (p: MockAccessPolicy) =>
+      s.accessApps.filter((a) => a.policyIds.includes(p.id)).length;
+    const render = (p: MockAccessPolicy) => ({ ...p, app_count: appCount(p), reusable: true });
+    if (!id && method === 'GET') return paginate(res, s.accessPolicies.map(render), q);
+
+    const parse = (): Omit<MockAccessPolicy, 'id'> | string => {
+      const b = body as Partial<MockAccessPolicy>;
+      if (!b?.name || !b.decision) return 'name and decision are required';
+      if (!Array.isArray(b.include) || b.include.length === 0) return 'include is required';
+      return {
+        name: b.name,
+        decision: b.decision,
+        include: b.include,
+        exclude: b.exclude ?? [],
+        require: b.require ?? [],
+      };
+    };
+
+    if (!id && method === 'POST') {
+      const parsed = parse();
+      if (typeof parsed === 'string') return badRequest(res, parsed, 12130);
+      const policy: MockAccessPolicy = { id: randomUUID(), ...parsed };
+      s.accessPolicies.push(policy);
+      return send(res, 200, envelope(render(policy)));
+    }
+    const policy = s.accessPolicies.find((p) => p.id === id);
+    if (!policy) return notFound(res, 'Access policy not found');
+    if (method === 'GET') return send(res, 200, envelope(render(policy)));
+    if (method === 'PUT') {
+      const parsed = parse();
+      if (typeof parsed === 'string') return badRequest(res, parsed, 12130);
+      Object.assign(policy, parsed);
+      return send(res, 200, envelope(render(policy)));
+    }
+    if (method === 'DELETE') {
+      if (appCount(policy) > 0) {
+        return badRequest(res, 'policy is still used by an application', 12130);
+      }
+      s.accessPolicies = s.accessPolicies.filter((p) => p !== policy);
+      return send(res, 200, envelope({ id: policy.id }));
+    }
+    return notFound(res);
+  }
+}
+
+function publicAccessApp(app: MockAccessApp, policies: MockAccessPolicy[]) {
+  const { policyIds, ...rest } = app;
+  return {
+    ...rest,
+    policies: policyIds.map((id, i) => {
+      const p = policies.find((x) => x.id === id);
+      return { ...(p ?? { id }), precedence: i + 1 };
+    }),
+  };
 }
 
 function publicTunnel(t: MockTunnel) {
