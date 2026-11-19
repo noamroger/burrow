@@ -155,6 +155,8 @@ COPY --from=prod-deps --chown=root:root /out /app
 COPY --from=build --chown=root:root /src/apps/web/dist /app/web
 COPY --chmod=0755 docker/entrypoint.sh /usr/local/bin/burrow-entrypoint
 COPY --chmod=0755 docker/healthcheck.mjs /usr/local/bin/burrow-healthcheck.mjs
+# Lost password or second factor: docker exec -it burrow burrow-reset-password
+COPY --chmod=0755 docker/reset-password.sh /usr/local/bin/burrow-reset-password
 
 # No USER here on purpose: the entrypoint starts as root only to give /data to
 # PUID:PGID (default 1000:1000) when Docker created it as root, then drops

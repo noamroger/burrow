@@ -14,7 +14,8 @@
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "mock:cf": "tsx scripts/mock-cloudflare.ts",
-    "dev:mock": "DATA_DIR=./.data CLOUDFLARE_API_BASE=http://127.0.0.1:8787/client/v4 CLOUDFLARED_PATH=./test/fixtures/fake-cloudflared.sh LOG_LEVEL=debug tsx watch src/index.ts"
+    "dev:mock": "DATA_DIR=./.data CLOUDFLARE_API_BASE=http://127.0.0.1:8787/client/v4 CLOUDFLARED_PATH=./test/fixtures/fake-cloudflared.sh LOG_LEVEL=debug tsx watch src/index.ts",
+    "reset-password": "node dist/cli/reset-password.js"
   },
   "dependencies": {
     "@burrow/shared": "workspace:*",
