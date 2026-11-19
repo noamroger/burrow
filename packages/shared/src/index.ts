@@ -501,7 +501,7 @@ export const REQUIRED_TOKEN_PERMISSIONS = [
     scope: 'Account',
     group: 'Access: Apps and Policies',
     level: 'Edit',
-    why: 'Optional: protect private hosts with Cloudflare Access (sign-in required)',
+    why: 'Protect private hosts with Cloudflare Access (sign-in required)',
     optional: true,
   },
 ] as const;

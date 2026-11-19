@@ -11,7 +11,11 @@ import {
   useRemoveToken,
 } from '../api/queries';
 import { PageHeader } from '../components/PageHeader';
-import { RequiredPermissionsTable, PermissionChecks } from '../components/TokenPermissions';
+import {
+  RequiredPermissionsTable,
+  PermissionChecks,
+  TokenGuide,
+} from '../components/TokenPermissions';
 import { TokenForm } from '../components/TokenForm';
 import { ZoneList } from '../components/ZoneList';
 import { Alert } from '../components/ui/Alert';
@@ -147,14 +151,23 @@ function CloudflareCard() {
         onClose={() => setReplacing(false)}
         title={t('settings.replaceToken')}
         description={t('settings.replaceHint')}
+        size="lg"
       >
-        <TokenForm
-          onCancel={() => setReplacing(false)}
-          onSaved={() => {
-            setReplacing(false);
-            toast.show(t('settings.tokenSaved'));
-          }}
-        />
+        <section aria-labelledby="replace-token-guide" className="space-y-3">
+          <h3 id="replace-token-guide" className="text-sm font-semibold">
+            {t('settings.howToCreate')}
+          </h3>
+          <TokenGuide />
+        </section>
+        <div className="mt-5 border-t border-border pt-5">
+          <TokenForm
+            onCancel={() => setReplacing(false)}
+            onSaved={() => {
+              setReplacing(false);
+              toast.show(t('settings.tokenSaved'));
+            }}
+          />
+        </div>
       </Dialog>
 
       <ConfirmDialog

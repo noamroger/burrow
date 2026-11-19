@@ -132,15 +132,37 @@ Optional, only if you want private hosts (see
 | ------- | ------------------------- | ------ | -------------------------------------------- |
 | Account | Access: Apps and Policies | Edit   | Create the Access application and its policy |
 
-**How to create it:**
+**How to create it** (the same steps are shown in Burrow, on first launch and
+in **Settings › Replace token**):
 
-1. Go to [dash.cloudflare.com/profile/api-tokens](https://dash.cloudflare.com/profile/api-tokens).
-2. Click **Create Token**, then **Create Custom Token**.
-3. Add the four permissions above (plus the optional Access one if you want
-   private hosts).
-4. Under **Zone Resources**, pick **Specific zone** and choose only the
-   domains you want to use with Burrow.
-5. Create the token and paste it into Burrow.
+1. Open [dash.cloudflare.com/profile/api-tokens](https://dash.cloudflare.com/profile/api-tokens)
+   (**My Profile › API Tokens**).
+2. Click **Create Token**. At the bottom of the list, next to
+   **Create Custom Token**, click **Get started**. Name the token, for
+   example `Burrow`.
+3. Under **Permissions**, each row has three dropdowns. Fill the first row,
+   then click **+ Add more** for each of the next ones:
+
+   | 1st dropdown | 2nd dropdown                | 3rd dropdown      |
+   | ------------ | --------------------------- | ----------------- |
+   | `Account`    | `Cloudflare Tunnel`         | `Edit`            |
+   | `Account`    | `Account Settings`          | `Read`            |
+   | `Zone`       | `DNS`                       | `Edit`            |
+   | `Zone`       | `Zone`                      | `Read`            |
+   | `Account`    | `Access: Apps and Policies` | `Edit` (optional) |
+
+   > **Can't find DNS or Zone?** They only appear once the first dropdown of
+   > the row is set to `Zone` (it starts on `Account`). In the second
+   > dropdown, type `DNS` to filter the list and pick the entry named exactly
+   > `DNS`, not `DNS Settings` or `DNS Firewall`.
+
+4. Further down, choose what the token can reach:
+   - **Account Resources**: `Include` › your account.
+   - **Zone Resources**: `Include` › `Specific zone` › your domain. Click
+     **+ Add more** to add other domains, or pick `All zones from an account`
+     to allow every domain in the account.
+5. Click **Continue to summary**, then **Create Token**. Copy the token and
+   paste it into Burrow: Cloudflare shows it only once.
 
 Burrow encrypts the token (AES-256-GCM) before saving it, never shows it
 again, and never writes it to the logs.
