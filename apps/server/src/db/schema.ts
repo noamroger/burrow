@@ -4,7 +4,7 @@
  *
  * Timestamps are ISO 8601 strings; booleans are stored as 0/1 integers.
  */
-import type { MaintenancePage, NotificationEvent } from '@burrow/shared';
+import type { HostHome, MaintenancePage, NotificationEvent } from '@burrow/shared';
 import { sql } from 'drizzle-orm';
 import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
@@ -143,6 +143,11 @@ export const proxyHosts = sqliteTable(
     maintenancePage: text('maintenance_page', { mode: 'json' }).$type<MaintenancePage | null>(),
     /** Secret token of the public status badge (`/api/badge/<token>`); null = no badge. */
     badgeToken: text('badge_token').unique(),
+    /** Homepage tile (HostHome JSON). */
+    home: text('home', { mode: 'json' })
+      .$type<HostHome>()
+      .notNull()
+      .default(sql`'{"visible":true,"title":"","description":"","icon":"","group":""}'`),
     dnsRecordId: text('dns_record_id'),
     syncStatus: text('sync_status', { enum: ['pending', 'synced', 'error', 'drift'] })
       .notNull()

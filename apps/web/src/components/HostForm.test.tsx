@@ -61,6 +61,7 @@ describe('HostForm', () => {
         browserRendering: null,
       },
       template: null,
+      home: { visible: true, title: '', description: '', icon: '', group: '' },
     });
   });
 
@@ -78,6 +79,22 @@ describe('HostForm', () => {
       expect.objectContaining({
         service: 'ssh://192.168.1.10:22',
         access: expect.objectContaining({ enabled: true, browserRendering: 'ssh' }),
+      }),
+    );
+  });
+
+  it('sets the homepage tile, and keeps an existing one open', async () => {
+    const { user, onSubmit } = setup();
+    await user.type(screen.getByLabelText('Subdomain'), 'media');
+    await user.type(screen.getByLabelText('Service URL'), 'http://jf:8096');
+    await user.click(screen.getByText('Homepage'));
+    await user.type(screen.getByLabelText(/^Name/), 'Movies');
+    await user.type(screen.getByLabelText(/^Section/), 'Media');
+    await user.type(screen.getByLabelText(/^Icon/), 'jellyfin');
+    await user.click(screen.getByRole('button', { name: 'Create host' }));
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        home: { visible: true, title: 'Movies', description: '', icon: 'jellyfin', group: 'Media' },
       }),
     );
   });

@@ -3,6 +3,9 @@
  * See packages/shared/src/index.ts for the route documentation.
  */
 import {
+  homeDataSchema,
+  homepageSettingsSchema,
+  type HomepageSettingsInput,
   apiTokenListSchema,
   availableTunnelListSchema,
   configImportReportSchema,
@@ -180,6 +183,13 @@ export const trafficApi = {
   overview: () => api.get('/traffic', trafficOverviewSchema),
   host: (id: number, range: MonitoringRange) =>
     api.get(`/traffic/hosts/${id}?range=${range}`, hostTrafficSchema),
+};
+
+export const homepageApi = {
+  settings: () => api.get('/homepage/settings', homepageSettingsSchema),
+  saveSettings: (input: HomepageSettingsInput) =>
+    api.put('/homepage/settings', input, homepageSettingsSchema),
+  data: () => api.get('/home', homeDataSchema),
 };
 
 export const notificationsApi = {

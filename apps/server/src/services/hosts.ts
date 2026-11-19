@@ -1,4 +1,6 @@
 import {
+  DEFAULT_HOST_HOME,
+  hostHomeSchema,
   accessSessionDurationSchema,
   buildHostname,
   dnsOwnershipComment,
@@ -106,6 +108,7 @@ export class HostService {
         until: row.maintenanceUntil,
         page: row.maintenancePage ?? null,
       },
+      home: hostHomeSchema.catch(DEFAULT_HOST_HOME).parse(row.home ?? {}),
       sync: { status: row.syncStatus, error: row.syncError, lastSyncedAt: row.lastSyncedAt },
       health,
       createdAt: row.createdAt,
@@ -217,6 +220,7 @@ export class HostService {
       accessBrowserRendering: input.access.browserRendering,
       template: input.template,
       ...(input.expiresAt !== undefined ? { expiresAt: expiry(input.expiresAt) } : {}),
+      ...(input.home !== undefined ? { home: input.home } : {}),
     };
   }
 

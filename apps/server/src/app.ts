@@ -20,6 +20,7 @@ import { backupRoutes } from './routes/backups.js';
 import { dockerRoutes } from './routes/docker.js';
 import { driftRoutes } from './routes/drift.js';
 import { healthRoutes } from './routes/health.js';
+import { homeRoutes, homepageSettingsRoutes } from './routes/homepage.js';
 import { hostRoutes } from './routes/hosts.js';
 import { logRoutes } from './routes/logs.js';
 import { maintenanceRoutes } from './routes/maintenance.js';
@@ -35,6 +36,34 @@ function toTrustProxy(
 ): boolean | string | ((addr: string, hop: number) => boolean) {
   if (typeof value === 'number') return (_addr, hop) => hop < value;
   return value;
+}
+
+/** What the homepage's public hostname may reach: the page, its assets, its data, badges. */
+const HOMEPAGE_HOST_PATHS = [
+  /^\/home\/?$/,
+  /^\/assets\/[\w.-]+$/,
+  /^\/(favicon\.svg|logo\.svg|theme-init\.js)$/,
+  /^\/api\/home$/,
+  /^\/api\/home\/icons\/\d+$/,
+  /^\/api\/badge\/[\w-]+(\.svg)?$/,
+];
+
+/**
+ * Requests for the homepage's public hostname (Settings › Homepage) only
+ * reach the homepage: the admin UI and the rest of the API answer 404 there,
+ * whatever the session.
+ */
+function restrictHomepageHostname(app: FastifyInstance, ctx: AppContext): void {
+  app.addHook('onRequest', async (req, reply) => {
+    const hostname = ctx.homepage.publicHostname();
+    if (!hostname || req.hostname.toLowerCase() !== hostname) return;
+    const path = req.url.split('?')[0]!;
+    if (req.method === 'GET' || req.method === 'HEAD') {
+      if (path === '/') return reply.redirect('/home', 302);
+      if (HOMEPAGE_HOST_PATHS.some((re) => re.test(path))) return;
+    }
+    return reply.status(404).type('text/plain').send('Not found');
+  });
 }
 
 export interface BuildAppOptions {
@@ -64,6 +93,7 @@ export async function buildApp(
   });
 
   registerErrorHandler(app);
+  restrictHomepageHostname(app, ctx);
 
   // Accept an empty JSON body (e.g. `curl -X POST -H 'content-type: application/json'`)
   // so scripted calls to bodiless endpoints like POST /api/sync just work.
@@ -144,6 +174,7 @@ export async function buildApp(
     await healthRoutes(scope, ctx);
     await authRoutes(scope, ctx);
     await badgeRoutes(scope, ctx);
+    await homeRoutes(scope, ctx);
   });
 
   // Everything else requires a session (and the CSRF header on mutations).
@@ -161,6 +192,7 @@ export async function buildApp(
     await monitoringRoutes(scope, ctx);
     await notificationRoutes(scope, ctx);
     await trafficRoutes(scope, ctx);
+    await homepageSettingsRoutes(scope, ctx);
     await tokenRoutes(scope, ctx);
   });
 

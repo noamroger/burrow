@@ -17,6 +17,7 @@ import { DockerClient, type DockerApi } from './docker/client.js';
 import { defaultSelfHostname, DockerDiscoveryService } from './docker/discovery.js';
 import { DriftService } from './services/drift.js';
 import { HealthService } from './services/health.js';
+import { HomepageService } from './services/homepage.js';
 import { HostService } from './services/hosts.js';
 import { LogBuffer } from './services/log-buffer.js';
 import { MaintenanceService } from './services/maintenance.js';
@@ -59,6 +60,7 @@ export interface AppContext {
   monitoring: MonitoringService;
   notifications: NotificationService;
   traffic: TrafficService;
+  homepage: HomepageService;
   lifecycle: Lifecycle;
 }
 
@@ -75,6 +77,8 @@ export interface ContextOverrides {
   failuresBeforeDown?: number;
   /** Time a tunnel may stay disconnected before it is reported down. */
   tunnelGraceMs?: number;
+  /** Where homepage icons are downloaded from (Dashboard Icons). */
+  iconBaseUrl?: string;
 }
 
 /** Version from package.json (works from both `src/` and `dist/`). */
@@ -228,6 +232,16 @@ export function createContext(
       db,
       cloudflare,
       logger: logger.child({ component: 'traffic' }),
+    }),
+    homepage: new HomepageService({
+      db,
+      settings,
+      health,
+      audit,
+      logger: logger.child({ component: 'homepage' }),
+      cacheDir: join(config.dataDir, 'icons'),
+      fetch: overrides.fetch,
+      iconBaseUrl: overrides.iconBaseUrl,
     }),
   } as Omit<AppContext, 'lifecycle'> as AppContext;
   ctx.lifecycle = new Lifecycle(ctx);

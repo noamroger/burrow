@@ -31,6 +31,7 @@ import {
   monitoringApi,
   notificationsApi,
   trafficApi,
+  homepageApi,
   zonesApi,
 } from './endpoints';
 
@@ -55,6 +56,8 @@ export const queryKeys = {
   monitoring: ['monitoring'] as const,
   notifications: ['notifications'] as const,
   traffic: ['traffic'] as const,
+  homepageSettings: ['homepage', 'settings'] as const,
+  home: ['home'] as const,
   trafficHost: (id: number, range: MonitoringRange) => ['traffic', id, range] as const,
   monitoringHost: (id: number, range: MonitoringRange) => ['monitoring', id, range] as const,
 };
@@ -416,6 +419,33 @@ export function useHostTraffic(id: number, range: MonitoringRange) {
     // A missing permission will not fix itself: do not retry it.
     retry: (count, error) => count < 1 && !isApiError(error, 'CLOUDFLARE_PERMISSION_MISSING'),
     placeholderData: (previous) => (previous?.hostId === id ? previous : undefined),
+  });
+}
+
+/* ------------------------------- homepage ----------------------------- */
+
+export function useHomepageSettings() {
+  return useQuery({ queryKey: queryKeys.homepageSettings, queryFn: homepageApi.settings });
+}
+
+export function useSaveHomepageSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: homepageApi.saveSettings,
+    onSuccess: (settings) => {
+      qc.setQueryData(queryKeys.homepageSettings, settings);
+      void qc.invalidateQueries({ queryKey: queryKeys.home });
+    },
+  });
+}
+
+/** The homepage itself (public or for the signed-in admin). */
+export function useHome() {
+  return useQuery({
+    queryKey: queryKeys.home,
+    queryFn: homepageApi.data,
+    refetchInterval: 60_000,
+    retry: (count, error) => count < 2 && (!isApiError(error) || error.status >= 500),
   });
 }
 

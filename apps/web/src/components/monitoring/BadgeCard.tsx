@@ -1,7 +1,7 @@
 /** Public status badge of a host: turn on, preview, copy the embed code, rotate, turn off. */
 import { useId, useState } from 'react';
 import type { HostMonitorSummary } from '@burrow/shared';
-import { useBadge } from '../../api/queries';
+import { useBadge, useHomepageSettings } from '../../api/queries';
 import { t } from '../../i18n';
 import { errorMessage } from '../../lib/errors';
 import { Alert } from '../ui/Alert';
@@ -20,15 +20,14 @@ export function badgeUrl(origin: string, token: string, theme: string, label: st
   return `${origin}/api/badge/${token}.svg${query ? `?${query}` : ''}`;
 }
 
-export function BadgeCard({
-  summary,
-  publicOrigin,
-}: {
-  summary: HostMonitorSummary;
-  /** `https://<public hostname>` when one is set, otherwise this page's origin. */
-  publicOrigin?: string | null;
-}) {
+export function BadgeCard({ summary }: { summary: HostMonitorSummary }) {
   const uid = useId();
+  // Badges are also served on the homepage's public hostname: prefer it in the snippets.
+  const homepage = useHomepageSettings().data;
+  const publicOrigin =
+    homepage?.enabled && homepage.visibility === 'public' && homepage.publicHostname
+      ? `https://${homepage.publicHostname}`
+      : null;
   const { enable, disable } = useBadge(summary.hostId);
   const toast = useToast();
   const [theme, setTheme] = useState<'soil' | 'chalk'>('soil');

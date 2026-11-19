@@ -28,7 +28,12 @@ export interface TestApp {
 
 /** A full Burrow app (fresh data dir) wired to an in-memory Cloudflare mock. */
 export async function createTestApp(
-  opts: { apiRateLimit?: number; docker?: DockerApi; dockerSelfHostname?: string } = {},
+  opts: {
+    apiRateLimit?: number;
+    docker?: DockerApi;
+    dockerSelfHostname?: string;
+    iconBaseUrl?: string;
+  } = {},
 ): Promise<TestApp> {
   const mock = new MockCloudflare();
   await mock.listen();
@@ -51,6 +56,7 @@ export async function createTestApp(
     healthTimeoutMs: 1000,
     docker: opts.docker,
     dockerSelfHostname: opts.dockerSelfHostname,
+    iconBaseUrl: opts.iconBaseUrl,
   });
   const app = await buildApp(ctx, { apiRateLimit: opts.apiRateLimit ?? 10_000 });
   return {

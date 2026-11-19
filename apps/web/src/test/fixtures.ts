@@ -28,6 +28,7 @@ export function makeHost(overrides: Partial<ProxyHost> = {}): ProxyHost {
       browserRendering: null,
     },
     template: null,
+    home: { visible: true, title: '', description: '', icon: '', group: '' },
     source: 'manual',
     sourceRef: null,
     expiresAt: null,

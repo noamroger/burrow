@@ -490,6 +490,40 @@ const ops: Operation[] = [
     },
     public: true,
   },
+  /* ---- homepage ---- */
+  {
+    method: 'get',
+    path: '/api/homepage/settings',
+    tag: 'Homepage',
+    summary: 'Homepage settings',
+    response: s.homepageSettingsSchema,
+  },
+  {
+    method: 'put',
+    path: '/api/homepage/settings',
+    tag: 'Homepage',
+    summary: 'Change the homepage settings (on/off, public or private, title, public hostname)',
+    body: s.homepageSettingsSchema,
+    response: s.homepageSettingsSchema,
+  },
+  {
+    method: 'get',
+    path: '/api/home',
+    tag: 'Homepage',
+    summary: 'The homepage: services with their public link, icon and status',
+    description:
+      'Public when the homepage is public, otherwise needs a session or a token. 404 when the homepage is off. Never contains origin service URLs.',
+    response: s.homeDataSchema,
+    public: true,
+  },
+  {
+    method: 'get',
+    path: '/api/home/icons/{id}',
+    tag: 'Homepage',
+    summary: 'Icon of a service on the homepage (image)',
+    description: 'Same access rules as `GET /api/home`. 404 when the service has no icon.',
+    public: true,
+  },
   /* ---- traffic ---- */
   {
     method: 'get',

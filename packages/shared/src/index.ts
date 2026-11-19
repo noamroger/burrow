@@ -10,11 +10,13 @@
  * value returned by `GET /api/auth/me`.
  */
 import { z } from 'zod';
+import { hostHomeSchema } from './homepage.js';
 import { hostMaintenanceSchema } from './maintenance.js';
 import { templateIdSchema } from './templates.js';
 
 export * from './templates.js';
 export * from './maintenance.js';
+export * from './homepage.js';
 export * from './monitoring.js';
 export * from './notifications.js';
 export * from './traffic.js';
@@ -494,6 +496,8 @@ export const proxyHostInputSchema = z
      * unchanged.
      */
     expiresAt: z.string().datetime({ offset: true }).nullable().optional(),
+    /** How the host appears on the homepage. Omitted on update: unchanged. */
+    home: hostHomeSchema.optional(),
   })
   .superRefine((host, ctx) => {
     const rendering = host.access.browserRendering;
@@ -580,6 +584,8 @@ export const proxyHostSchema = z.object({
   expiresAt: z.string().nullable(),
   /** Maintenance mode: visitors get the maintenance page instead of the service. */
   maintenance: hostMaintenanceSchema,
+  /** How the host appears on the homepage. */
+  home: hostHomeSchema,
   sync: z.object({
     status: syncStatusSchema,
     error: z.string().nullable(),
@@ -889,6 +895,8 @@ export const configHostSchema = z.object({
     .default({}),
   access: accessSettingsInputSchema.optional().default({}),
   template: z.string().trim().toLowerCase().nullable().optional().default(null),
+  /** Homepage tile. Missing: unchanged (new hosts: defaults). */
+  home: hostHomeSchema.optional(),
 });
 export type ConfigHost = z.input<typeof configHostSchema>;
 

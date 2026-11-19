@@ -5,7 +5,7 @@
  * so the user sees the server's rules before submitting. API errors are shown
  * at the top of the form; DNS_CONFLICT gets a dedicated explanation.
  */
-import { useId, useMemo, useState, type FormEvent } from 'react';
+import { useId, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import {
   ACCESS_SESSION_DURATIONS,
   buildHostname,
@@ -17,6 +17,7 @@ import {
   SERVICE_TEMPLATES,
   TEMPLATE_CATEGORIES,
   TEMPORARY_DURATIONS,
+  DEFAULT_HOST_HOME,
   templateServiceUrl,
   type AccessSessionDuration,
   type ServiceTemplate,
@@ -61,6 +62,13 @@ export interface HostFormValues {
    * 'never' makes it permanent, a number of minutes sets a new expiry.
    */
   expiresIn: string;
+  /** Homepage tile. */
+  homeVisible: boolean;
+  homeTitle: string;
+  homeDescription: string;
+  /** '' (automatic), a Dashboard Icons name, an image URL or an uploaded data URL. */
+  homeIcon: string;
+  homeGroup: string;
 }
 
 /** Split a free-text list on new lines, commas, semicolons and spaces. */
@@ -96,6 +104,11 @@ export function initialValues(host: ProxyHost | undefined, zones: Zone[]): HostF
       browserRendering: host.access.browserRendering ?? '',
       template: host.template ?? '',
       expiresIn: '',
+      homeVisible: host.home.visible,
+      homeTitle: host.home.title,
+      homeDescription: host.home.description,
+      homeIcon: host.home.icon,
+      homeGroup: host.home.group,
     };
   }
   return {
@@ -115,6 +128,11 @@ export function initialValues(host: ProxyHost | undefined, zones: Zone[]): HostF
     browserRendering: '',
     template: '',
     expiresIn: '',
+    homeVisible: DEFAULT_HOST_HOME.visible,
+    homeTitle: '',
+    homeDescription: '',
+    homeIcon: '',
+    homeGroup: '',
   };
 }
 
@@ -160,6 +178,13 @@ export function toInput(values: HostFormValues): ProxyHostInput {
         values.accessEnabled && values.browserRendering ? values.browserRendering : null,
     },
     template: values.template || null,
+    home: {
+      visible: values.homeVisible,
+      title: values.homeTitle,
+      description: values.homeDescription,
+      icon: values.homeIcon,
+      group: values.homeGroup,
+    },
     ...(values.expiresIn === 'never'
       ? { expiresAt: null }
       : values.expiresIn
@@ -564,6 +589,19 @@ export function HostForm({ host, zones, tunnels = [], onSubmit, onCancel }: Host
         ) : null}
       </fieldset>
 
+      <HomeSection
+        id={id}
+        values={values}
+        set={set}
+        errors={errors}
+        fallbackTitle={
+          findTemplate(values.template)?.name ??
+          (values.subdomain && values.subdomain !== '@'
+            ? values.subdomain.charAt(0).toUpperCase() + values.subdomain.slice(1)
+            : fqdn)
+        }
+      />
+
       <details className="group rounded-lg border border-border" open={advancedSet || undefined}>
         <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3.5 py-2.5 text-sm font-medium text-fg select-none">
           <span>{t('host.advanced')}</span>
@@ -631,6 +669,163 @@ export function HostForm({ host, zones, tunnels = [], onSubmit, onCancel }: Host
         </Button>
       </div>
     </form>
+  );
+}
+
+const MAX_ICON_BYTES = 150 * 1024;
+
+/** Homepage tile of the host (Settings › Homepage shows them). */
+function HomeSection({
+  id,
+  values,
+  set,
+  errors,
+  fallbackTitle,
+}: {
+  id: (name: string) => string;
+  values: HostFormValues;
+  set: <K extends keyof HostFormValues>(key: K, value: HostFormValues[K]) => void;
+  errors: Record<string, string>;
+  fallbackTitle: string;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [iconError, setIconError] = useState<string | null>(null);
+  const uploaded = values.homeIcon.startsWith('data:');
+  const customized =
+    !values.homeVisible ||
+    !!(values.homeTitle || values.homeDescription || values.homeIcon || values.homeGroup);
+
+  function upload(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!/^image\/(png|jpeg|gif|webp|svg\+xml)$/.test(file.type)) {
+      setIconError(t('host.home.iconType'));
+      return;
+    }
+    if (file.size > MAX_ICON_BYTES) {
+      setIconError(t('host.home.iconTooLarge'));
+      return;
+    }
+    setIconError(null);
+    const reader = new FileReader();
+    reader.onload = () => set('homeIcon', String(reader.result));
+    reader.readAsDataURL(file);
+  }
+
+  const shownIconError = iconError ?? errors['home.icon'];
+  return (
+    <details className="group rounded-lg border border-border" open={customized || undefined}>
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3.5 py-2.5 text-sm font-medium text-fg select-none">
+        <span className="inline-flex items-center gap-1.5">
+          <Icon name="home" size={14} className="text-accent" />
+          {t('host.home.legend')}
+        </span>
+        <Icon
+          name="chevronDown"
+          className="text-fg-muted transition-transform group-open:rotate-180"
+        />
+      </summary>
+      <div className="space-y-4 border-t border-border px-3.5 py-4">
+        <Checkbox
+          id={id('homeVisible')}
+          checked={values.homeVisible}
+          onChange={(e) => set('homeVisible', e.target.checked)}
+          label={t('host.home.visible')}
+          description={t('host.home.visibleHint')}
+        />
+        {values.homeVisible ? (
+          <>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field
+                id={id('homeTitle')}
+                label={t('host.home.title')}
+                aside={t('common.optional')}
+                error={errors['home.title']}
+              >
+                <Input
+                  id={id('homeTitle')}
+                  value={values.homeTitle}
+                  onChange={(e) => set('homeTitle', e.target.value)}
+                  placeholder={fallbackTitle || 'Jellyfin'}
+                  maxLength={60}
+                />
+              </Field>
+              <Field
+                id={id('homeGroup')}
+                label={t('host.home.group')}
+                aside={t('common.optional')}
+                error={errors['home.group']}
+              >
+                <Input
+                  id={id('homeGroup')}
+                  value={values.homeGroup}
+                  onChange={(e) => set('homeGroup', e.target.value)}
+                  placeholder={t('host.home.groupPlaceholder')}
+                  maxLength={40}
+                />
+              </Field>
+            </div>
+            <Field
+              id={id('homeDescription')}
+              label={t('host.home.description')}
+              aside={t('common.optional')}
+              error={errors['home.description']}
+            >
+              <Input
+                id={id('homeDescription')}
+                value={values.homeDescription}
+                onChange={(e) => set('homeDescription', e.target.value)}
+                placeholder={t('host.home.descriptionPlaceholder')}
+                maxLength={140}
+              />
+            </Field>
+            <Field
+              id={id('homeIcon')}
+              label={t('host.home.icon')}
+              aside={t('common.optional')}
+              hint={t('host.home.iconHint')}
+              error={shownIconError}
+            >
+              <div className="flex flex-wrap gap-2">
+                <Input
+                  id={id('homeIcon')}
+                  value={uploaded ? t('host.home.iconUploaded') : values.homeIcon}
+                  readOnly={uploaded}
+                  onChange={(e) => set('homeIcon', e.target.value)}
+                  placeholder={t('host.home.iconPlaceholder')}
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  className="min-w-0 flex-1 font-mono"
+                  aria-invalid={!!shownIconError}
+                  aria-describedby={describedBy(id('homeIcon'), {
+                    hint: true,
+                    error: shownIconError,
+                  })}
+                />
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
+                  className="sr-only"
+                  tabIndex={-1}
+                  onChange={upload}
+                />
+                <Button variant="secondary" icon="upload" onClick={() => fileRef.current?.click()}>
+                  {t('host.home.upload')}
+                </Button>
+                {values.homeIcon ? (
+                  <Button variant="ghost" onClick={() => set('homeIcon', '')}>
+                    {t('host.home.iconReset')}
+                  </Button>
+                ) : null}
+              </div>
+            </Field>
+          </>
+        ) : null}
+      </div>
+    </details>
   );
 }
 

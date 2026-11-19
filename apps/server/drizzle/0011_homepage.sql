@@ -1,0 +1,1 @@
+ALTER TABLE `proxy_hosts` ADD `home` text DEFAULT '{"visible":true,"title":"","description":"","icon":"","group":""}' NOT NULL;

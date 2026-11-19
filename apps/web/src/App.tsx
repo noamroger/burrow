@@ -7,6 +7,7 @@
  *   /tunnel    tunnel + live logs ├ require a session and a configured token
  *   /monitoring uptime history     │
  *   /settings  settings           ┘
+ *   /home      homepage (public, or for the signed-in admin; Settings › Homepage)
  */
 import { useEffect, useState } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
@@ -24,6 +25,7 @@ import { queryKeys, useMe, useSetupStatus } from './api/queries';
 import { Layout } from './components/Layout';
 import { ToastProvider } from './components/ui/Toast';
 import { FullPageSpinner, FullPageError } from './pages/FullPage';
+import { HomePage } from './pages/HomePage';
 import { HostsPage } from './pages/HostsPage';
 import { LoginPage } from './pages/LoginPage';
 import { MonitorDetailPage } from './pages/MonitorDetailPage';
@@ -89,6 +91,7 @@ export function AppRoutes() {
       <Routes>
         <Route path="/setup" element={<SetupPage />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/home" element={<HomePage />} />
         <Route element={<RequireReady />}>
           <Route element={<Layout />}>
             <Route index element={<HostsPage />} />
