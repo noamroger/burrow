@@ -57,8 +57,17 @@ When you remove the service, Burrow removes the route and the DNS record.
   logs in the browser.
 - **Health at a glance**: tunnel status, connected Cloudflare data centers,
   and a reachability check for every service.
-- **Self-healing sync**: if something changes on Cloudflare, Burrow notices
-  and puts things back the way you configured them.
+- **Several tunnels**: one per site (home, VPS…), each host picks its
+  tunnel. Import a tunnel you already made in the Cloudflare dashboard,
+  with its routes.
+- **Drift alerts**: if someone edits a route, a DNS record or an Access app
+  in the Cloudflare dashboard, Burrow shows what changed and lets you revert
+  it or keep it (or repairs it automatically, if you prefer).
+- **Backups**: scheduled copies of the database to a folder or to
+  S3-compatible storage such as Cloudflare R2, with retention.
+- **Export, import and REST API**: move your configuration to another server
+  as one JSON file, and script everything with API tokens and the built-in
+  OpenAPI documentation at `/api/docs` (see [docs/api.md](docs/api.md)).
 - **Secure by default**: argon2id passwords, encrypted API token, CSRF
   protection, login rate limiting, non-root container.
 
@@ -372,15 +381,21 @@ checks, multi-arch image.
 **v0.2**: private hosts protected by Cloudflare Access (allowed emails and
 email domains, session length).
 
+**v0.3**: several tunnels and tunnel import, configuration export and
+import, REST API with OpenAPI docs and API tokens, drift alerts, scheduled
+backups (folder or S3/R2).
+
 **Next:**
 
 - [ ] Docker auto-discovery with labels (`burrow.host=app.example.com`,
       `burrow.port=3000`), read-only socket, optional
 - [x] Cloudflare Access applications and policies ("only my email can open this")
 - [ ] More Access rules (identity provider groups, countries, service tokens)
-- [ ] Several tunnels, import an existing tunnel
-- [ ] Config export and import
-- [ ] Documented REST API (OpenAPI)
+- [x] Several tunnels, import an existing tunnel
+- [x] Config export and import
+- [x] Documented REST API (OpenAPI)
+- [x] Drift alerts (changes made in the Cloudflare dashboard)
+- [x] Scheduled backups (folder or S3/R2)
 - [ ] Notifications (Discord, ntfy, webhook)
 - [ ] French translation
 
