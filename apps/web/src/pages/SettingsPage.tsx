@@ -32,6 +32,7 @@ import { errorMessage } from '../lib/errors';
 import { fieldErrors } from '../lib/zod';
 import { PasswordStrength } from '../components/PasswordStrength';
 import { ApiTokensCard } from '../components/settings/ApiTokensCard';
+import { BackupsCard } from '../components/settings/BackupsCard';
 import { ConfigCard } from '../components/settings/ConfigCard';
 import { DriftCard } from '../components/settings/DriftCard';
 
@@ -49,6 +50,7 @@ export function SettingsPage() {
         </Card>
         <DriftCard />
         <ConfigCard />
+        <BackupsCard />
         <ApiTokensCard />
         <div className="grid gap-6 lg:grid-cols-2">
           <PasswordCard />

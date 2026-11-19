@@ -596,6 +596,86 @@ export const driftSettingsSchema = z.object({ autoRepair: z.boolean() });
 export type DriftSettings = z.infer<typeof driftSettingsSchema>;
 
 /* ------------------------------------------------------------------ */
+/* Backups                                                             */
+/* ------------------------------------------------------------------ */
+
+/** Object key prefix: letters, digits, `-`, `_`, `.` and `/` (no leading slash). */
+const backupPrefixSchema = z
+  .string()
+  .trim()
+  .max(200)
+  .regex(/^(?:[A-Za-z0-9._-]+\/)*$/, 'Use letters, digits, - _ . and end with /, e.g. burrow/');
+
+/**
+ * S3-compatible storage (AWS S3, Cloudflare R2, MinIO, Backblaze B2…). For R2
+ * the endpoint is `https://<account id>.r2.cloudflarestorage.com`, region `auto`.
+ */
+export const backupS3Schema = z.object({
+  endpoint: z.string().trim().url().max(500),
+  region: z.string().trim().min(1).max(50).default('auto'),
+  bucket: z
+    .string()
+    .trim()
+    .regex(/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/, 'Invalid bucket name'),
+  prefix: backupPrefixSchema.default('burrow/'),
+  accessKeyId: z.string().trim().min(1).max(200),
+  /** Write-only. Omit it to keep the saved secret. */
+  secretAccessKey: z.string().min(1).max(500).optional(),
+  /** `https://endpoint/bucket/key` instead of `https://bucket.endpoint/key`. */
+  forcePathStyle: z.boolean().default(true),
+});
+export type BackupS3Input = z.infer<typeof backupS3Schema>;
+
+/** PUT /api/backups/settings -> 200 BackupStatus */
+export const backupSettingsInputSchema = z.object({
+  enabled: z.boolean(),
+  intervalHours: z
+    .number()
+    .int()
+    .min(1)
+    .max(24 * 30),
+  /** How many backups to keep at the destination; older ones are deleted. */
+  retention: z.number().int().min(1).max(365),
+  destination: z.enum(['local', 's3']),
+  s3: backupS3Schema.nullable().default(null),
+});
+export type BackupSettingsInput = z.input<typeof backupSettingsInputSchema>;
+
+export const backupFileSchema = z.object({
+  name: z.string(),
+  size: z.number().int(),
+  createdAt: z.string(),
+});
+export type BackupFile = z.infer<typeof backupFileSchema>;
+
+export const backupRunSchema = z.object({
+  at: z.string(),
+  ok: z.boolean(),
+  /** File name when it worked. */
+  name: z.string().nullable(),
+  error: z.string().nullable(),
+});
+export type BackupRun = z.infer<typeof backupRunSchema>;
+
+/** GET /api/backups -> 200 */
+export const backupStatusSchema = z.object({
+  settings: backupSettingsInputSchema.extend({
+    s3: backupS3Schema
+      .omit({ secretAccessKey: true })
+      .extend({ hasSecret: z.boolean() })
+      .nullable(),
+  }),
+  /** Where local backups go (`BACKUP_DIR`, default `<DATA_DIR>/backups`). */
+  localDir: z.string(),
+  lastRun: backupRunSchema.nullable(),
+  nextRunAt: z.string().nullable(),
+  files: z.array(backupFileSchema),
+  /** Set when the destination could not be listed. */
+  listError: z.string().nullable(),
+});
+export type BackupStatus = z.infer<typeof backupStatusSchema>;
+
+/* ------------------------------------------------------------------ */
 /* API tokens                                                          */
 /* ------------------------------------------------------------------ */
 

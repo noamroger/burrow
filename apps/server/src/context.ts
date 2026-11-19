@@ -12,6 +12,7 @@ import { AuditService } from './services/audit.js';
 import { AuthService } from './services/auth.js';
 import { CloudflareService } from './services/cloudflare.js';
 import { ConfigService } from './services/config-io.js';
+import { BackupService } from './backup/service.js';
 import { DriftService } from './services/drift.js';
 import { HealthService } from './services/health.js';
 import { HostService } from './services/hosts.js';
@@ -46,6 +47,7 @@ export interface AppContext {
   /** Configuration export / import . */
   configIo: ConfigService;
   drift: DriftService;
+  backups: BackupService;
   lifecycle: Lifecycle;
 }
 
@@ -153,6 +155,14 @@ export function createContext(
       logger: logger.child({ component: 'drift' }),
       intervalSeconds: config.reconcileIntervalSeconds,
     }),
+    backups: new BackupService({
+      sqlite,
+      settings,
+      box,
+      localDir: config.backupDir,
+      logger: logger.child({ component: 'backup' }),
+      fetch: overrides.fetch,
+    }),
   } as Omit<AppContext, 'lifecycle'> as AppContext;
   ctx.lifecycle = new Lifecycle(ctx);
   return ctx;
@@ -198,6 +208,8 @@ export class Lifecycle {
     if (ctx.config.reconcileIntervalSeconds > 0) {
       this.every(ctx.config.reconcileIntervalSeconds, () => this.checkDrift());
     }
+    // Backups: check every 5 minutes whether one is due (the schedule is in hours).
+    this.every(300, () => ctx.backups.runIfDue());
     if (ctx.config.healthcheckIntervalSeconds > 0) {
       this.every(ctx.config.healthcheckIntervalSeconds, () => ctx.hosts.checkAll());
       void ctx.hosts.checkAll().catch(() => undefined);

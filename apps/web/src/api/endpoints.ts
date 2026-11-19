@@ -6,6 +6,9 @@ import {
   apiTokenListSchema,
   availableTunnelListSchema,
   configImportReportSchema,
+  backupRunSchema,
+  backupStatusSchema,
+  type BackupSettingsInput,
   driftReportSchema,
   createdApiTokenSchema,
   cloudflareSettingsSchema,
@@ -126,6 +129,14 @@ export const driftApi = {
   resolve: (strategy: 'revert' | 'keep') =>
     api.post('/drift/resolve', { strategy }, driftReportSchema),
   settings: (autoRepair: boolean) => api.put('/drift/settings', { autoRepair }, driftReportSchema),
+};
+
+export const backupsApi = {
+  get: () => api.get('/backups', backupStatusSchema),
+  save: (input: BackupSettingsInput) => api.put('/backups/settings', input, backupStatusSchema),
+  run: () => api.post('/backups', undefined, backupRunSchema),
+  /** Downloaded by the browser (GET with the session cookie). */
+  downloadUrl: (name: string) => `/api/backups/${encodeURIComponent(name)}`,
 };
 
 export const hostsApi = {

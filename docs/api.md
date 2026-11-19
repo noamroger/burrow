@@ -67,6 +67,13 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'content-type: application/
   -d '{"strategy":"revert"}' $BURROW/api/drift/resolve
 ```
 
+Back up the database now and download the file:
+
+```bash
+NAME=$(curl -s -X POST -H "Authorization: Bearer $TOKEN" $BURROW/api/backups | jq -r .name)
+curl -s -H "Authorization: Bearer $TOKEN" -o "$NAME" $BURROW/api/backups/$NAME
+```
+
 ## Configuration file
 
 `GET /api/config/export` returns:

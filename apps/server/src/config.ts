@@ -1,4 +1,4 @@
-import { dirname, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 
@@ -38,6 +38,8 @@ const configSchema = z.object({
     .transform((v) => v.replace(/\/+$/, '')),
   RECONCILE_INTERVAL_SECONDS: z.coerce.number().int().min(0).default(300),
   HEALTHCHECK_INTERVAL_SECONDS: z.coerce.number().int().min(0).default(60),
+  /** Where local backups are written. Default: `<DATA_DIR>/backups`. */
+  BACKUP_DIR: z.string().optional(),
   WEB_DIST_DIR: z.string().min(1).default(resolve(here, '../../web/dist')),
   /** Address cloudflared exposes its metrics and `/ready` endpoint on. */
   CLOUDFLARED_METRICS: z.string().min(1).default('127.0.0.1:20241'),
@@ -61,6 +63,7 @@ export interface Config {
   cloudflareApiBase: string;
   reconcileIntervalSeconds: number;
   healthcheckIntervalSeconds: number;
+  backupDir: string;
   webDistDir: string;
   isProduction: boolean;
 }
@@ -89,6 +92,7 @@ export function loadConfig(env: NodeJS.ProcessEnv | ConfigInput = process.env): 
     cloudflareApiBase: c.CLOUDFLARE_API_BASE,
     reconcileIntervalSeconds: c.RECONCILE_INTERVAL_SECONDS,
     healthcheckIntervalSeconds: c.HEALTHCHECK_INTERVAL_SECONDS,
+    backupDir: resolve(c.BACKUP_DIR || join(c.DATA_DIR, 'backups')),
     webDistDir: resolve(c.WEB_DIST_DIR),
     isProduction: c.NODE_ENV === 'production',
   };

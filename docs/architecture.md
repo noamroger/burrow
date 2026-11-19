@@ -91,6 +91,26 @@ automatically at startup.
   any value matching a Cloudflare token pattern. cloudflared output is scrubbed
   the same way before it reaches the ring buffer.
 
+### 4.1 Backups
+
+`BackupService` (`src/backup/`) copies the database with the SQLite online
+backup API (consistent while Burrow runs), gzips it as
+`burrow-YYYYMMDD-HHmmss.db.gz` (UTC) and writes it to `BACKUP_DIR` or to an
+S3-compatible bucket. The S3 client is four SigV4-signed calls (`aws4fetch`):
+PutObject, GetObject, DeleteObject, ListObjectsV2; for Cloudflare R2 the
+endpoint is `https://<account id>.r2.cloudflarestorage.com` with region
+`auto`. The S3 secret key is stored encrypted like the Cloudflare token and is
+never returned by the API.
+
+A timer checks every 5 minutes whether a backup is due (interval in hours,
+from the last run; a failed run is retried within the hour). After each
+backup, files beyond the retention count are deleted; only files matching the
+name pattern are ever listed or deleted. Events `completed` / `failed` are the
+hook for notifications.
+
+A backup contains the encrypted Cloudflare token: restoring it elsewhere needs
+the same `/data/.secret` or `BURROW_SECRET`.
+
 ## 5. Flow: adding a proxy host
 
 ```
@@ -281,6 +301,7 @@ stopped ──start()──▶ starting ──first "Registered tunnel connectio
   [docs/api.md](api.md)). Personal API tokens (`api_tokens` table, SHA-256
   only) authenticate scripts without the CSRF header.
 - **Config export/import**: done (`ConfigService`, [docs/api.md](api.md)).
+- **Backups**: done (§4.1). `BackupService` emits `completed` and `failed`.
 - **Drift detection**: done (§6.2). `DriftService` emits `detected` for the
   notification channels.
 - **Notifications**: an internal event bus already emits `host.synced`,

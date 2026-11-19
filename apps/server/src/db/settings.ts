@@ -16,6 +16,10 @@ export const SettingKeys = {
   tunnelName: 'tunnel.name',
   /** Revert drift automatically at every check instead of only alerting. */
   driftAutoRepair: 'drift.auto_repair',
+  /** Backup schedule and destination (S3 secret encrypted). */
+  backupSettings: 'backup.settings',
+  /** Outcome of the last backup run. */
+  backupLastRun: 'backup.last_run',
   /** Hostnames this Burrow instance created a Cloudflare Access application for. */
   managedAccess: 'access.managed_hostnames',
 } as const;

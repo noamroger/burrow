@@ -22,6 +22,7 @@ import {
   tokensApi,
   configApi,
   driftApi,
+  backupsApi,
   zonesApi,
 } from './endpoints';
 
@@ -40,6 +41,7 @@ export const queryKeys = {
   health: ['health'] as const,
   tokens: ['tokens'] as const,
   drift: ['drift'] as const,
+  backups: ['backups'] as const,
 };
 
 /** Polling intervals (ms). */
@@ -271,6 +273,28 @@ export function useDriftSettings() {
   return useMutation({
     mutationFn: driftApi.settings,
     onSuccess: (report) => qc.setQueryData(queryKeys.drift, report),
+  });
+}
+
+/* ------------------------------- backups ------------------------------ */
+
+export function useBackups() {
+  return useQuery({ queryKey: queryKeys.backups, queryFn: backupsApi.get });
+}
+
+export function useSaveBackups() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: backupsApi.save,
+    onSuccess: (status) => qc.setQueryData(queryKeys.backups, status),
+  });
+}
+
+export function useRunBackup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: backupsApi.run,
+    onSettled: () => void qc.invalidateQueries({ queryKey: queryKeys.backups }),
   });
 }
 

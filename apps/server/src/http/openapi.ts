@@ -339,6 +339,38 @@ const ops: Operation[] = [
     body: s.driftSettingsSchema,
     response: s.driftReportSchema,
   },
+  /* ---- backups ---- */
+  {
+    method: 'get',
+    path: '/api/backups',
+    tag: 'Backups',
+    summary: 'Backup settings, last run and the files at the destination',
+    response: s.backupStatusSchema,
+  },
+  {
+    method: 'put',
+    path: '/api/backups/settings',
+    tag: 'Backups',
+    summary: 'Set the schedule, retention and destination (local or S3/R2)',
+    description: 'Omit `s3.secretAccessKey` to keep the saved secret.',
+    body: s.backupSettingsInputSchema,
+    response: s.backupStatusSchema,
+  },
+  {
+    method: 'post',
+    path: '/api/backups',
+    tag: 'Backups',
+    summary: 'Back up now',
+    description: 'Always 200: `ok` and `error` say whether it worked.',
+    response: s.backupRunSchema,
+  },
+  {
+    method: 'get',
+    path: '/api/backups/{name}',
+    tag: 'Backups',
+    summary: 'Download a backup (gzipped SQLite database)',
+    description: 'Responds with `application/gzip`.',
+  },
   /* ---- config ---- */
   {
     method: 'get',
@@ -385,6 +417,9 @@ export function buildOpenApi(version: string): Record<string, unknown> {
   for (const op of ops) {
     const parameters: unknown[] = [];
     if (op.path.includes('{id}')) parameters.push(id);
+    if (op.path.includes('{name}')) {
+      parameters.push({ name: 'name', in: 'path', required: true, schema: { type: 'string' } });
+    }
     for (const [name, q] of Object.entries(op.query ?? {})) {
       parameters.push({
         name,
