@@ -109,6 +109,23 @@ export function toInput(values: HostFormValues): ProxyHostInput {
   };
 }
 
+/** True when saving this input changes the host's Cloudflare Access protection. */
+export function accessChanged(before: ProxyHost | undefined, after: ProxyHost): boolean {
+  const a = after.access;
+  if (!before) return a.enabled;
+  const b = before.access;
+  if (!a.enabled && !b.enabled) return false;
+  const same = (x: string[], y: string[]) =>
+    x.length === y.length && [...x].sort().every((v, i) => v === [...y].sort()[i]);
+  return (
+    a.enabled !== b.enabled ||
+    a.sessionDuration !== b.sessionDuration ||
+    !same(a.emails, b.emails) ||
+    !same(a.emailDomains, b.emailDomains) ||
+    after.hostname !== before.hostname
+  );
+}
+
 /** First error under a key prefix (`access.emails.2` → shown on the emails field). */
 function errorUnder(errors: Record<string, string>, prefix: string): string | undefined {
   const key = Object.keys(errors).find((k) => k === prefix || k.startsWith(`${prefix}.`));
@@ -397,6 +414,9 @@ export function HostForm({ host, zones, onSubmit, onCancel }: HostFormProps) {
             <p className="text-xs leading-relaxed text-fg-muted">
               {t('host.access.wholeHostname', { hostname: fqdn || '…' })}
             </p>
+            <Alert tone="info" title={t('host.access.delayTitle')}>
+              {t('host.access.delayBody')}
+            </Alert>
           </div>
         ) : null}
       </fieldset>

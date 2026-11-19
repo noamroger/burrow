@@ -14,7 +14,7 @@ import { createAdminSchema } from '@burrow/shared';
 import { useCreateAdmin, useMe, useSetupStatus, useZones } from '../api/queries';
 import { Icon } from '../components/Icon';
 import { PasswordStrength } from '../components/PasswordStrength';
-import { TokenGuide } from '../components/TokenPermissions';
+import { RequiredPermissionsTable, TokenGuide } from '../components/TokenPermissions';
 import { TokenForm } from '../components/TokenForm';
 import { ZoneList } from '../components/ZoneList';
 import { Alert } from '../components/ui/Alert';
@@ -215,6 +215,13 @@ function CloudflareStep({ onDone }: { onDone: () => void }) {
           {t('setup.cloudflare.howTo')}
         </h3>
         <TokenGuide />
+      </section>
+      <section aria-labelledby="token-perms" className="space-y-3">
+        <h3 id="token-perms" className="text-sm font-semibold">
+          {t('token.permissionsCaption')}
+        </h3>
+        <RequiredPermissionsTable />
+        <p className="text-xs text-fg-muted">{t('setup.cloudflare.scopeHint')}</p>
       </section>
       <div className="border-t border-border pt-5">
         <TokenForm onSaved={onDone} submitLabel={t('setup.cloudflare.submit')} />

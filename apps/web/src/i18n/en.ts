@@ -82,6 +82,8 @@ export const en = {
   'setup.cloudflare.description':
     'Burrow needs an API token to create your tunnel and DNS records. The token is encrypted before it is stored and never leaves this container.',
   'setup.cloudflare.howTo': 'Create a token in 1 minute',
+  'setup.cloudflare.scopeHint':
+    'Tip: in the Zone policy, include only the domains you want to use with Burrow.',
   'setup.cloudflare.submit': 'Verify and save',
   'setup.zones.title': 'Choose your domains',
   'setup.zones.description':
@@ -118,21 +120,17 @@ export const en = {
   'token.checkOptional': 'not granted (optional)',
   'token.checksFix':
     'Edit the token on the Cloudflare dashboard to add the missing permissions, then verify again.',
-  'token.guide.open':
-    'Open the API Tokens page of your Cloudflare profile (My Profile › API Tokens):',
-  'token.guide.custom':
-    'Click "Create Token". At the bottom of the list, next to "Create Custom Token", click "Get started". Give the token a name, for example "Burrow".',
-  'token.guide.permissions':
-    'Under "Permissions", each row has three dropdowns. Fill the first row, then click "+ Add more" for each of the next ones:',
-  'token.guide.zoneTip':
-    'Can\'t find DNS or Zone? They only appear once the first dropdown of the row is set to "Zone" (it starts on "Account"). In the second dropdown, type "DNS" to filter the list and pick the entry named exactly "DNS", not "DNS Settings" or "DNS Firewall".',
-  'token.guide.resources': 'Further down, choose which account and domains the token can reach:',
-  'token.guide.yourAccount': 'your account',
-  'token.guide.yourDomain': 'your domain',
-  'token.guide.resourcesHint':
-    'Click "+ Add more" under Zone Resources to add more domains, or pick "All zones from an account" to allow every domain in the account. Leave "Client IP Address Filtering" and "TTL" empty.',
-  'token.guide.create':
-    'Click "Continue to summary", then "Create Token". Copy the token and paste it below: Cloudflare shows it only once.',
+  'token.step1': 'Open',
+  'token.step2':
+    'Click "Create Token" and start from a custom token, not a template. Name it, for example "Burrow".',
+  'token.step3':
+    'Add a first permission policy of type "Account" and select your account. In it, give Cloudflare Tunnel: Edit and Account Settings: Read. Add Access: Apps and Policies: Edit only if you want private hosts.',
+  'token.step4':
+    'Add a second policy of type "Zone" and select the domains Burrow may use. In it, give DNS: Edit and Zone: Read. These two rows only exist in a Zone policy: the "DNS & Zones" category of the Account policy (DNS Settings, DNS Firewall, DNS Views...) does not have them, and Burrow needs none of its rows.',
+  'token.step5':
+    'Click "Continue to summary", then "Create Token". Copy the token and paste it here: Cloudflare shows it only once.',
+  'token.dashboardHint':
+    'Read and Edit are translated if your dashboard is not in English (Lu and Modifier in French). On the older token form, each permission is instead a row of three dropdowns, for example Zone › DNS › Edit, as in the table below.',
 
   /* Zones */
   'zones.enable': 'Allow Burrow to use {zone}',
@@ -249,6 +247,10 @@ export const en = {
   'host.access.duration.720h': '30 days',
   'host.access.wholeHostname':
     'Protection applies to every path of {hostname}. Burrow creates an Access application and policy named "[Burrow] {hostname}" in your Zero Trust dashboard; edit them in Burrow, not there.',
+  'host.access.delayTitle': 'Changes take about a minute',
+  'host.access.delayBody':
+    'Cloudflare needs a minute to apply a new or changed sign-in. Until then, visitors may see "Unable to find your Access application". Wait a moment and reload the page.',
+  'host.access.delayToast': 'Sign-in changes can take a minute to apply on Cloudflare.',
   'host.access.conflictTitle': '{hostname} is already protected by another Access application',
   'host.dnsConflictBody':
     'A DNS record with this name exists in Cloudflare and was not created by Burrow, so Burrow will not overwrite it. Delete or rename that record on the Cloudflare dashboard, or choose another subdomain.',
