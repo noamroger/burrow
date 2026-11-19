@@ -12,6 +12,7 @@
 <p align="center">
   <a href="https://github.com/noamroger/burrow/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/noamroger/burrow/actions/workflows/ci.yml/badge.svg"></a>
   <a href="https://github.com/noamroger/burrow/pkgs/container/burrow"><img alt="GHCR" src="https://img.shields.io/badge/ghcr.io-noamroger%2Fburrow-blue?logo=docker"></a>
+  <a href="https://hub.docker.com/r/noamroger/burrow"><img alt="Docker Hub" src="https://img.shields.io/docker/pulls/noamroger/burrow?logo=docker&label=Docker%20Hub"></a>
   <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-green"></a>
   <a href="https://buymeacoffee.com/noamroger"><img alt="Buy me a coffee" src="https://img.shields.io/badge/Buy%20me%20a%20coffee-support-FFDD00?logo=buymeacoffee&logoColor=black"></a>
 </p>
@@ -108,6 +109,9 @@ docker compose up -d
 
 That's it. Your service is online at `https://<name>.<your-domain>`, with
 HTTPS handled by Cloudflare.
+
+> The same image is also on Docker Hub. If you prefer it, use
+> `image: noamroger/burrow:latest` instead.
 
 ## The Cloudflare API token
 

@@ -13,6 +13,9 @@ concurrency:
 
 env:
   GHCR_IMAGE: ghcr.io/noamroger/burrow
+  # Docker Hub is optional: the image is pushed there only when the
+  # DOCKERHUB_USERNAME and DOCKERHUB_TOKEN repository secrets are set.
+  DOCKERHUB_IMAGE: docker.io/noamroger/burrow
 
 jobs:
   image:
@@ -26,6 +29,7 @@ jobs:
       attestations: write
     outputs:
       digest: ${{ steps.build.outputs.digest }}
+      dockerhub: ${{ steps.dockerhub.outputs.enabled }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -45,12 +49,34 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Check Docker Hub credentials
+        id: dockerhub
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          if [[ -n "$DOCKERHUB_USERNAME" && -n "$DOCKERHUB_TOKEN" ]]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Docker Hub secrets are not set, publishing to GHCR only."
+          fi
+
+      - name: Log in to Docker Hub
+        if: steps.dockerhub.outputs.enabled == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: |
             ${{ env.GHCR_IMAGE }}
+            name=${{ env.DOCKERHUB_IMAGE }},enable=${{ steps.dockerhub.outputs.enabled == 'true' }}
           # Pre-releases (v1.2.0-rc.1) get their exact tag only, never "latest".
           tags: |
             type=semver,pattern={{version}}
@@ -98,6 +124,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
           DIGEST: ${{ needs.image.outputs.digest }}
+          DOCKERHUB: ${{ needs.image.outputs.dockerhub }}
         run: |
           prerelease=""
           if [[ "$TAG" == *-* ]]; then prerelease="--prerelease"; fi
@@ -108,6 +135,12 @@ jobs:
           \`\`\`sh
           docker pull ghcr.io/noamroger/burrow:${version}
           \`\`\`
+          EOF
+          if [[ "$DOCKERHUB" == "true" ]]; then
+            # shellcheck disable=SC2016 # literal backticks for Markdown
+            printf '\nAlso on Docker Hub: `docker pull noamroger/burrow:%s`\n' "$version" >> notes.md
+          fi
+          cat >> notes.md <<EOF
 
           Multi-arch (linux/amd64, linux/arm64). Digest: \`${DIGEST}\`
           EOF
