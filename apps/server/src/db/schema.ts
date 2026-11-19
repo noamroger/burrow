@@ -48,6 +48,29 @@ export const zones = sqliteTable('zones', {
   enabled: integer('enabled', { mode: 'boolean' }).notNull().default(false),
 });
 
+/**
+ * Tunnels Burrow manages: the one it created at setup, others created from the
+ * UI, and existing tunnels imported from the account.
+ */
+export const tunnels = sqliteTable('tunnels', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  /** Cloudflare tunnel UUID. Changes if Burrow has to recreate a deleted tunnel. */
+  cfId: text('cf_id').notNull().unique(),
+  name: text('name').notNull(),
+  origin: text('origin', { enum: ['created', 'imported'] })
+    .notNull()
+    .default('created'),
+  /** Run cloudflared for this tunnel inside the container. */
+  runConnector: integer('run_connector', { mode: 'boolean' }).notNull().default(true),
+  isDefault: integer('is_default', { mode: 'boolean' }).notNull().default(false),
+  /** Ingress rules Burrow wrote on this tunnel, as `hostname|path` keys, so orphans can be recognised. */
+  managedIngress: text('managed_ingress', { mode: 'json' })
+    .$type<string[]>()
+    .notNull()
+    .default(sql`'[]'`),
+  createdAt: timestamp('created_at'),
+});
+
 /** Desired state of every published service. */
 export const proxyHosts = sqliteTable(
   'proxy_hosts',
@@ -58,6 +81,13 @@ export const proxyHosts = sqliteTable(
     hostname: text('hostname').notNull(),
     service: text('service').notNull(),
     path: text('path').notNull().default(''),
+    /** Tunnel the host is published through. NULL means "the default tunnel" (assigned on next sync). */
+    tunnelId: integer('tunnel_id').references(() => tunnels.id, { onDelete: 'set null' }),
+    /** Extra `originRequest` keys kept from an imported route (connectTimeout, http2Origin…). */
+    originRequestExtra: text('origin_request_extra', { mode: 'json' })
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'`),
     noTlsVerify: integer('no_tls_verify', { mode: 'boolean' }).notNull().default(false),
     httpHostHeader: text('http_host_header').notNull().default(''),
     originServerName: text('origin_server_name').notNull().default(''),
@@ -100,5 +130,6 @@ export const auditLog = sqliteTable('audit_log', {
 export type UserRow = typeof users.$inferSelect;
 export type SessionRow = typeof sessions.$inferSelect;
 export type ZoneRow = typeof zones.$inferSelect;
+export type TunnelRow = typeof tunnels.$inferSelect;
 export type ProxyHostRow = typeof proxyHosts.$inferSelect;
 export type NewProxyHostRow = typeof proxyHosts.$inferInsert;

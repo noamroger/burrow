@@ -12,6 +12,7 @@ import {
   useRunSync,
   useSaveHost,
   useTunnel,
+  useTunnels,
   useZones,
 } from '../api/queries';
 import { EmptyState } from '../components/EmptyState';
@@ -342,6 +343,8 @@ function HostTable({
 }
 
 function HostnameLink({ host }: { host: ProxyHost }) {
+  const tunnels = useTunnels();
+  const several = (tunnels.data?.length ?? 0) > 1;
   const path = host.path.replace(/^\^/, '').replace(/\$$/, '');
   return (
     <div className="min-w-0">
@@ -373,6 +376,11 @@ function HostnameLink({ host }: { host: ProxyHost }) {
       {host.path ? (
         <p className="mt-0.5 truncate font-mono text-xs text-fg-muted" title={t('hosts.pathTitle')}>
           {t('hosts.pathLabel')} {host.path}
+        </p>
+      ) : null}
+      {several && host.tunnelName ? (
+        <p className="mt-0.5 truncate text-xs text-fg-muted">
+          {t('hosts.viaTunnel', { name: host.tunnelName })}
         </p>
       ) : null}
     </div>

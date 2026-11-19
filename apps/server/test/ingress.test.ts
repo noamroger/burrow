@@ -19,6 +19,20 @@ const host = (hostname: string, path = '', service = 'http://svc:80') => ({
 });
 
 describe('buildIngressRule', () => {
+  it('keeps extra originRequest keys of an imported route, flags win', () => {
+    expect(
+      buildIngressRule({
+        ...host('a.example.com'),
+        noTlsVerify: false,
+        originRequestExtra: { connectTimeout: '30s', noTLSVerify: true },
+      }),
+    ).toEqual({
+      hostname: 'a.example.com',
+      service: 'http://svc:80',
+      originRequest: { connectTimeout: '30s' },
+    });
+  });
+
   it('omits empty path and options', () => {
     expect(buildIngressRule(host('a.example.com'))).toEqual({
       hostname: 'a.example.com',

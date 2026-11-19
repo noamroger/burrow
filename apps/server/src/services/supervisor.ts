@@ -26,6 +26,8 @@ export interface SupervisorOptions {
   backoff?: { initialMs?: number; maxMs?: number; resetAfterMs?: number };
   /** Time to wait after SIGTERM before SIGKILL (default 10 s). */
   killTimeoutMs?: number;
+  /** Tunnel name attached to every log line (several tunnels can run at once). */
+  label?: () => string | undefined;
 }
 
 /** Environment variables that must never reach the child process. */
@@ -86,6 +88,11 @@ export class Supervisor extends EventEmitter<{ state: [SupervisorStatus] }> {
     };
   }
 
+  /** Reuse a version detected by another supervisor (same binary). */
+  setVersion(version: string | null): void {
+    this.version = version;
+  }
+
   /** Run `cloudflared --version` and remember the result. Never throws. */
   async detectVersion(): Promise<string | null> {
     this.version = await new Promise<string | null>((resolve) => {
@@ -136,8 +143,9 @@ export class Supervisor extends EventEmitter<{ state: [SupervisorStatus] }> {
   }
 
   private log(level: 'info' | 'warn' | 'error', message: string): void {
-    this.opts.logs.push({ level, message, source: 'burrow' });
-    this.opts.logger[level](message);
+    const tunnel = this.opts.label?.();
+    this.opts.logs.push({ level, message, source: 'burrow', tunnel });
+    this.opts.logger[level](tunnel ? { tunnel } : {}, message);
   }
 
   private scrub(text: string): string {
@@ -185,10 +193,11 @@ export class Supervisor extends EventEmitter<{ state: [SupervisorStatus] }> {
     const onLine = (raw: string) => {
       if (!raw.trim()) return;
       const parsed = parseCloudflaredLine(this.scrub(raw));
-      this.opts.logs.push({ ...parsed, source: 'cloudflared' });
+      const tunnel = this.opts.label?.();
+      this.opts.logs.push({ ...parsed, source: 'cloudflared', tunnel });
       // Mirror to the process log so `docker logs` shows the tunnel too.
       const pinoLevel = parsed.level === 'fatal' ? 'error' : parsed.level;
-      this.opts.logger[pinoLevel]({ source: 'cloudflared' }, parsed.message);
+      this.opts.logger[pinoLevel]({ source: 'cloudflared', tunnel }, parsed.message);
       if (this.child === child && this.state === 'starting' && isConnectedLine(parsed.message)) {
         this.setState('running');
         this.healthyTimer = setTimeout(() => {

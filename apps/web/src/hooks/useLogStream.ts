@@ -12,7 +12,14 @@
  */
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { logLineSchema, tunnelInfoSchema, type LogLine, type TunnelInfo } from '@burrow/shared';
+import {
+  logLineSchema,
+  supervisorStatusSchema,
+  type LogLine,
+  type TunnelInfo,
+  type TunnelList,
+} from '@burrow/shared';
+import { z } from 'zod';
 import { logsApi } from '../api/endpoints';
 import { queryKeys } from '../api/queries';
 
@@ -25,7 +32,9 @@ export interface UseLogStreamOptions {
   max?: number;
 }
 
-const supervisorSchema = tunnelInfoSchema.shape.supervisor;
+const supervisorSchema = supervisorStatusSchema.extend({
+  tunnelId: z.number().int().nullable().optional(),
+});
 
 /** Merge lines by `seq`, keeping order and at most `max` lines. Exported for tests. */
 export function mergeLogLines(prev: LogLine[], incoming: LogLine[], max: number): LogLine[] {
@@ -89,9 +98,20 @@ export function useLogStream({ backlog = 500, max = 2000 }: UseLogStreamOptions 
       source.addEventListener('state', (event) => {
         const parsed = supervisorSchema.safeParse(safeJson((event as MessageEvent<string>).data));
         if (!parsed.success) return;
-        qc.setQueryData<TunnelInfo>(queryKeys.tunnel, (old) =>
-          old ? { ...old, supervisor: parsed.data } : old,
-        );
+        const { tunnelId, ...supervisor } = parsed.data;
+        if (tunnelId != null) {
+          qc.setQueryData<TunnelInfo>(queryKeys.tunnelInfo(tunnelId), (old) =>
+            old ? { ...old, supervisor } : old,
+          );
+          qc.setQueryData<TunnelList>(queryKeys.tunnels, (old) =>
+            old
+              ? {
+                  tunnels: old.tunnels.map((x) => (x.id === tunnelId ? { ...x, supervisor } : x)),
+                }
+              : old,
+          );
+        }
+        void qc.invalidateQueries({ queryKey: queryKeys.tunnel });
       });
       source.onerror = () => {
         if (!source || source.readyState === EventSource.CLOSED) {

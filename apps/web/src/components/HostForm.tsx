@@ -13,6 +13,7 @@ import {
   type AccessSessionDuration,
   type ProxyHost,
   type ProxyHostInput,
+  type TunnelSummary,
   type Zone,
 } from '@burrow/shared';
 import { isApiError } from '../api/client';
@@ -26,6 +27,8 @@ import { Checkbox, describedBy, Field, Input, Select, Textarea } from './ui/Fiel
 
 export interface HostFormValues {
   subdomain: string;
+  /** Burrow tunnel id as a string; '' keeps the current (or default) tunnel. */
+  tunnelId: string;
   zoneId: string;
   service: string;
   path: string;
@@ -59,6 +62,7 @@ export function initialValues(host: ProxyHost | undefined, zones: Zone[]): HostF
   if (host) {
     return {
       subdomain: host.subdomain,
+      tunnelId: host.tunnelId !== null ? String(host.tunnelId) : '',
       zoneId: host.zoneId,
       service: host.service,
       path: host.path,
@@ -74,6 +78,7 @@ export function initialValues(host: ProxyHost | undefined, zones: Zone[]): HostF
   }
   return {
     subdomain: '',
+    tunnelId: '',
     zoneId: zones[0]?.id ?? '',
     service: '',
     path: '',
@@ -91,6 +96,7 @@ export function initialValues(host: ProxyHost | undefined, zones: Zone[]): HostF
 export function toInput(values: HostFormValues): ProxyHostInput {
   return {
     subdomain: values.subdomain,
+    ...(values.tunnelId ? { tunnelId: Number(values.tunnelId) } : {}),
     zoneId: values.zoneId,
     service: values.service,
     path: values.path,
@@ -149,11 +155,13 @@ export interface HostFormProps {
   host?: ProxyHost;
   /** Zones the host can be published in (enabled zones). */
   zones: Zone[];
+  /** Tunnels to choose from. The picker is shown only when there are several. */
+  tunnels?: TunnelSummary[];
   onSubmit: (input: ProxyHostInput) => Promise<unknown>;
   onCancel: () => void;
 }
 
-export function HostForm({ host, zones, onSubmit, onCancel }: HostFormProps) {
+export function HostForm({ host, zones, tunnels = [], onSubmit, onCancel }: HostFormProps) {
   const uid = useId();
   const id = (name: string) => `${uid}-${name}`;
   const [values, setValues] = useState(() => initialValues(host, zones));
@@ -309,6 +317,24 @@ export function HostForm({ host, zones, onSubmit, onCancel }: HostFormProps) {
           aria-describedby={describedBy(id('service'), { hint: true, error: errors.service })}
         />
       </Field>
+
+      {tunnels.length > 1 ? (
+        <Field id={id('tunnel')} label={t('host.tunnel')} hint={t('host.tunnelHint')}>
+          <Select
+            id={id('tunnel')}
+            value={values.tunnelId || String(tunnels.find((x) => x.isDefault)?.id ?? '')}
+            onChange={(e) => set('tunnelId', e.target.value)}
+            aria-describedby={describedBy(id('tunnel'), { hint: true })}
+          >
+            {tunnels.map((x) => (
+              <option key={x.id} value={x.id}>
+                {x.name}
+                {x.isDefault ? ` (${t('tunnels.default')})` : ''}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      ) : null}
 
       <Field
         id={id('path')}

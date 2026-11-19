@@ -3,7 +3,13 @@
  * hooks, which share caching, polling and invalidation rules.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { OriginHealth, ProxyHost, ProxyHostInput, ProxyHostList } from '@burrow/shared';
+import type {
+  OriginHealth,
+  ProxyHost,
+  ProxyHostInput,
+  ProxyHostList,
+  UpdateTunnelInput,
+} from '@burrow/shared';
 import {
   authApi,
   cloudflareApi,
@@ -12,6 +18,7 @@ import {
   setupApi,
   syncApi,
   tunnelApi,
+  tunnelsApi,
   zonesApi,
 } from './endpoints';
 
@@ -21,6 +28,9 @@ export const queryKeys = {
   cloudflare: ['cloudflare'] as const,
   zones: ['zones'] as const,
   tunnel: ['tunnel'] as const,
+  tunnels: ['tunnels'] as const,
+  tunnelInfo: (id: number) => ['tunnels', id] as const,
+  availableTunnels: ['tunnels', 'available'] as const,
   hosts: ['hosts'] as const,
   sync: ['sync'] as const,
   logs: ['logs'] as const,
@@ -142,6 +152,84 @@ export function useTunnelAction() {
   return useMutation({
     mutationFn: (action: 'start' | 'stop' | 'restart') => tunnelApi[action](),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.tunnel }),
+  });
+}
+
+/* ------------------------------ tunnels ------------------------------- */
+
+export function useTunnels() {
+  return useQuery({
+    queryKey: queryKeys.tunnels,
+    queryFn: tunnelsApi.list,
+    refetchInterval: POLL.tunnel,
+    select: (d) => d.tunnels,
+  });
+}
+
+export function useTunnelInfo(id: number | undefined) {
+  return useQuery({
+    queryKey: queryKeys.tunnelInfo(id ?? 0),
+    queryFn: () => tunnelsApi.get(id!),
+    enabled: id !== undefined,
+    refetchInterval: POLL.tunnel,
+  });
+}
+
+export function useAvailableTunnels(enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.availableTunnels,
+    queryFn: tunnelsApi.available,
+    enabled,
+    select: (d) => d.tunnels,
+  });
+}
+
+/** Refresh everything that depends on the tunnel list. */
+function invalidateTunnels(qc: ReturnType<typeof useQueryClient>) {
+  void qc.invalidateQueries({ queryKey: queryKeys.tunnels });
+  void qc.invalidateQueries({ queryKey: queryKeys.tunnel });
+  void qc.invalidateQueries({ queryKey: queryKeys.hosts });
+  void qc.invalidateQueries({ queryKey: queryKeys.zones });
+}
+
+export function useCreateTunnel() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: tunnelsApi.create, onSuccess: () => invalidateTunnels(qc) });
+}
+
+export function useImportTunnel() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: tunnelsApi.import, onSuccess: () => invalidateTunnels(qc) });
+}
+
+export function useUpdateTunnel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: number; input: UpdateTunnelInput }) =>
+      tunnelsApi.update(id, input),
+    onSuccess: () => invalidateTunnels(qc),
+  });
+}
+
+export function useDeleteTunnel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, deleteOnCloudflare }: { id: number; deleteOnCloudflare: boolean }) =>
+      tunnelsApi.remove(id, deleteOnCloudflare),
+    onSuccess: () => invalidateTunnels(qc),
+  });
+}
+
+export function useTunnelControl() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, action }: { id: number; action: 'start' | 'stop' | 'restart' }) =>
+      tunnelsApi.action(id, action),
+    onSuccess: (_s, { id }) => {
+      void qc.invalidateQueries({ queryKey: queryKeys.tunnelInfo(id) });
+      void qc.invalidateQueries({ queryKey: queryKeys.tunnels });
+      void qc.invalidateQueries({ queryKey: queryKeys.tunnel });
+    },
   });
 }
 

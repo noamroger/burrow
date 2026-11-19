@@ -29,7 +29,7 @@ export const en = {
 
   'nav.main': 'Main',
   'nav.hosts': 'Proxy hosts',
-  'nav.tunnel': 'Tunnel',
+  'nav.tunnel': 'Tunnels',
   'nav.settings': 'Settings',
   'nav.logout': 'Log out',
   'nav.openMenu': 'Open menu',
@@ -175,6 +175,7 @@ export const en = {
   'hosts.col.enabled': 'Enabled',
   'hosts.col.actions': 'Actions',
   'hosts.pathLabel': 'path',
+  'hosts.viaTunnel': 'via {name}',
   'hosts.pathTitle': 'Only requests whose path matches this pattern use this host',
   'hosts.enable': 'Enable {hostname}',
   'hosts.disable': 'Disable {hostname}',
@@ -282,9 +283,9 @@ export const en = {
   'health.never': 'not checked yet',
 
   /* Tunnel */
-  'tunnel.title': 'Tunnel',
+  'tunnel.title': 'Tunnels',
   'tunnel.description':
-    'Your Cloudflare Tunnel and the cloudflared process running in this container.',
+    'Your Cloudflare Tunnels and the cloudflared processes running in this container.',
   'tunnel.loadFailed': 'Could not load the tunnel status',
   'tunnel.cloudflare': 'Cloudflare tunnel',
   'tunnel.supervisor': 'cloudflared',
@@ -378,6 +379,57 @@ export const en = {
   'settings.changePassword': 'Change password',
   'settings.passwordChanged': 'Password changed.',
   'settings.wrongPassword': 'The current password is wrong.',
+  /* Several tunnels */
+  'tunnels.add': 'Add tunnel',
+  'tunnels.import': 'Import tunnel',
+  'tunnels.pick': 'Tunnels',
+  'tunnels.default': 'default',
+  'tunnels.created': 'Tunnel created.',
+  'tunnels.createTitle': 'Add a tunnel',
+  'tunnels.createHint':
+    'Burrow creates a new remotely managed tunnel in your Cloudflare account. Use one tunnel per site or network.',
+  'tunnels.name': 'Name',
+  'tunnels.create': 'Create tunnel',
+  'tunnels.runConnector': 'Run cloudflared in Burrow',
+  'tunnels.runConnectorHint':
+    'Turn off when the connector of this tunnel runs on another machine: Burrow then only manages its routes.',
+  'tunnels.notRunHint':
+    'Burrow does not run a connector for this tunnel. Its routes are still managed here.',
+  'tunnels.importTitle': 'Import a tunnel',
+  'tunnels.importHint':
+    'Manage a tunnel that already exists in your account. Its public hostnames become proxy hosts.',
+  'tunnels.importPick': 'Tunnels in your account',
+  'tunnels.importNone': 'Every tunnel of this account is already managed by Burrow.',
+  'tunnels.importLocal':
+    'Locally managed (config file): migrate it in the Cloudflare dashboard to import it.',
+  'tunnels.importRoutesUnknown': 'Routes could not be read.',
+  'tunnels.importRouteCount': '{count} public hostname(s)',
+  'tunnels.importRoutes': 'Import its public hostnames as proxy hosts',
+  'tunnels.importRoutesHint':
+    'Routes Burrow cannot manage (no hostname, special services) stay on the tunnel untouched.',
+  'tunnels.importRunHint':
+    'Leave off if a connector already runs elsewhere: two connectors would share the traffic.',
+  'tunnels.importDone': '{name} imported',
+  'tunnels.importSummary': '{imported} route(s) imported, {skipped} kept as they are.',
+  'tunnels.routeImported': 'Imported',
+  'tunnels.routeSkipped': 'Kept as is',
+  'tunnels.settings': 'Tunnel settings',
+  'tunnels.originCreated': 'Created by Burrow.',
+  'tunnels.originImported': 'Imported from your Cloudflare account.',
+  'tunnels.makeDefault': 'Make default',
+  'tunnels.delete': 'Delete tunnel',
+  'tunnels.deleteDefault': 'Make another tunnel the default before deleting this one.',
+  'tunnels.deleteTitle': 'Delete {name}?',
+  'tunnels.deleteBody':
+    'Burrow stops its connector and removes the routes and DNS records it created on it.',
+  'tunnels.deleteHasHosts':
+    '{count} proxy host(s) still use this tunnel. Move or delete them first.',
+  'tunnels.deleteOnCloudflare': 'Also delete it on Cloudflare',
+  'tunnels.deleteOnCloudflareHint': 'Otherwise Burrow only stops managing it.',
+  'tunnels.deleted': '{name} was deleted.',
+  'host.tunnel': 'Tunnel',
+  'host.tunnelHint': 'The tunnel that carries the traffic of this host.',
+
   'settings.session': 'Session',
   'settings.signedInAs': 'Signed in as',
 } as const;

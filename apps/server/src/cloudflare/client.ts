@@ -281,6 +281,16 @@ export class CloudflareClient {
     });
   }
 
+  /** Permanent. Cloudflare refuses while connectors are still connected. */
+  deleteTunnel(accountId: string, tunnelId: string): Promise<CfTunnel> {
+    return this.request('DELETE', `/accounts/${accountId}/cfd_tunnel/${tunnelId}`);
+  }
+
+  /** Remove stale connections (e.g. right after stopping cloudflared, before deleting). */
+  cleanupTunnelConnections(accountId: string, tunnelId: string): Promise<unknown> {
+    return this.request('DELETE', `/accounts/${accountId}/cfd_tunnel/${tunnelId}/connections`);
+  }
+
   listTunnelConnections(accountId: string, tunnelId: string): Promise<CfConnector[]> {
     return this.request('GET', `/accounts/${accountId}/cfd_tunnel/${tunnelId}/connections`);
   }

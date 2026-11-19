@@ -1,6 +1,5 @@
 import { dnsOwnershipComment, type ProxyHost } from '@burrow/shared';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { SettingKeys } from '../src/db/settings.js';
 import {
   createTestApp,
   setupAdmin,
@@ -87,7 +86,7 @@ describe('Cloudflare token', () => {
     expect(t.mock.state.tunnels).toHaveLength(1);
     expect(tunnel().name).toMatch(/^burrow-[0-9a-f]{6}$/);
     expect(tunnel().config_src).toBe('cloudflare');
-    await waitFor(() => t.ctx.supervisor.status().state === 'running');
+    await waitFor(() => t.ctx.supervisors.defaultStatus().state === 'running');
 
     const status = (await api(s)('GET', '/api/setup/status')).json();
     expect(status).toEqual({ userCreated: true, cloudflareConfigured: true, tunnelReady: true });
@@ -125,7 +124,7 @@ describe('Cloudflare token', () => {
     await api(s)('PUT', '/api/cloudflare/token', { token: VALID_TOKEN });
     const res = await api(s)('DELETE', '/api/cloudflare/token');
     expect(res.statusCode).toBe(204);
-    expect(t.ctx.supervisor.status().state).toBe('disabled');
+    expect(t.ctx.supervisors.defaultStatus().state).toBe('disabled');
     expect((await api(s)('GET', '/api/cloudflare')).json()).toMatchObject({
       configured: false,
       tokenHint: null,
@@ -526,9 +525,9 @@ describe('reconciliation', () => {
       zoneId: s.zoneId,
       service: 'http://a:1',
     });
-    await waitFor(() => t.ctx.supervisor.status().state === 'running');
+    await waitFor(() => t.ctx.supervisors.defaultStatus().state === 'running');
     const oldId = tunnel().id;
-    const oldPid = t.ctx.supervisor.status().pid;
+    const oldPid = t.ctx.supervisors.defaultStatus().pid;
     tunnel().deleted_at = new Date().toISOString();
 
     const result = (await api(s)('POST', '/api/sync')).json();
@@ -539,7 +538,7 @@ describe('reconciliation', () => {
     ]);
     const fresh = tunnel();
     expect(fresh.id).not.toBe(oldId);
-    expect(t.ctx.settings.get(SettingKeys.tunnelId)).toBe(fresh.id);
+    expect(t.ctx.tunnels.stored()?.id).toBe(fresh.id);
     expect(fresh.config?.ingress?.[0]).toMatchObject({ hostname: 'app.example.com' });
     expect(dns()[0]).toMatchObject({
       content: `${fresh.id}.cfargotunnel.com`,
@@ -548,7 +547,8 @@ describe('reconciliation', () => {
     // cloudflared is restarted with the new token.
     await waitFor(
       () =>
-        t.ctx.supervisor.status().state === 'running' && t.ctx.supervisor.status().pid !== oldPid,
+        t.ctx.supervisors.defaultStatus().state === 'running' &&
+        t.ctx.supervisors.defaultStatus().pid !== oldPid,
     );
   });
 
@@ -571,7 +571,7 @@ describe('reconciliation', () => {
 describe('logs', () => {
   it('returns the recent cloudflared lines', async () => {
     const s = await setupConfigured(t);
-    await waitFor(() => t.ctx.supervisor.status().state === 'running');
+    await waitFor(() => t.ctx.supervisors.defaultStatus().state === 'running');
     const lines = (await api(s)('GET', '/api/logs?limit=50')).json().lines;
     expect(
       lines.some((l: { message: string }) => l.message.includes('Registered tunnel connection')),
@@ -580,7 +580,7 @@ describe('logs', () => {
 
   it('streams lines over SSE with Last-Event-ID resume', async () => {
     const s = await setupConfigured(t);
-    await waitFor(() => t.ctx.supervisor.status().state === 'running');
+    await waitFor(() => t.ctx.supervisors.defaultStatus().state === 'running');
     const address = await t.app.listen({ port: 0, host: '127.0.0.1' });
     const controller = new AbortController();
     const res = await fetch(`${address}/api/logs/stream`, {

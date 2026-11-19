@@ -115,3 +115,21 @@ export async function waitFor<T>(
     await new Promise((r) => setTimeout(r, stepMs));
   }
 }
+
+/** `app.inject` bound to a session: `call('POST', '/api/hosts', body)`. */
+export type ApiCall = (
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
+  url: string,
+  payload?: unknown,
+) => Promise<Awaited<ReturnType<FastifyInstance['inject']>>>;
+
+export function apiFor(t: TestApp, s: Session): ApiCall {
+  return (method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', url: string, payload?: unknown) =>
+    t.app.inject({
+      method,
+      url,
+      cookies: s.cookies,
+      headers: s.headers,
+      ...(payload !== undefined ? { payload: payload as object } : {}),
+    });
+}

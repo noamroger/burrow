@@ -14,7 +14,8 @@ import { HealthService } from './services/health.js';
 import { HostService } from './services/hosts.js';
 import { LogBuffer } from './services/log-buffer.js';
 import { Reconciler } from './services/reconciler.js';
-import { Supervisor, type SupervisorOptions } from './services/supervisor.js';
+import type { SupervisorOptions } from './services/supervisor.js';
+import { SupervisorPool } from './services/supervisors.js';
 import { TunnelService } from './services/tunnel.js';
 import { ZoneService } from './services/zones.js';
 import type Database from 'better-sqlite3';
@@ -33,7 +34,7 @@ export interface AppContext {
   cloudflare: CloudflareService;
   tunnels: TunnelService;
   logs: LogBuffer;
-  supervisor: Supervisor;
+  supervisors: SupervisorPool;
   reconciler: Reconciler;
   health: HealthService;
   hosts: HostService;
@@ -82,16 +83,21 @@ export function createContext(
     fetch: overrides.fetch,
     retryBaseMs: overrides.cloudflareRetryBaseMs,
   });
-  const tunnels = new TunnelService(settings, cloudflare, logger.child({ component: 'tunnel' }));
+  const tunnels = new TunnelService({
+    db,
+    settings,
+    cloudflare,
+    logger: logger.child({ component: 'tunnel' }),
+  });
   const logs = new LogBuffer(2000);
-  const supervisor = new Supervisor({
+  const supervisors = new SupervisorPool({
     binaryPath: config.cloudflaredPath,
     metricsAddress: config.cloudflaredMetrics,
-    getToken: () => tunnels.getRunToken(),
+    tunnels,
     knownSecrets: () => cloudflare.knownSecrets(),
     logs,
     logger: logger.child({ component: 'supervisor' }),
-    ...overrides.supervisor,
+    overrides: overrides.supervisor,
   });
   const reconciler = new Reconciler({
     db,
@@ -101,7 +107,7 @@ export function createContext(
     logger: logger.child({ component: 'reconciler' }),
   });
   const health = new HealthService(overrides.healthTimeoutMs ?? 5_000);
-  const hosts = new HostService({ db, reconciler, cloudflare, health, audit, logger });
+  const hosts = new HostService({ db, reconciler, cloudflare, health, audit, tunnels, logger });
   const zones = new ZoneService(db, cloudflare);
 
   const ctx = {
@@ -117,7 +123,7 @@ export function createContext(
     cloudflare,
     tunnels,
     logs,
-    supervisor,
+    supervisors,
     reconciler,
     health,
     hosts,
@@ -135,16 +141,22 @@ export class Lifecycle {
   private timers: NodeJS.Timeout[] = [];
 
   constructor(private readonly ctx: AppContext) {
-    ctx.tunnels.on('changed', () => {
+    ctx.tunnels.on('changed', (row) => {
       // A new tunnel means a new run token: restart a running cloudflared.
-      if (ctx.supervisor.status().state === 'running') void ctx.supervisor.restart();
+      if (ctx.supervisors.status(row.id).state === 'running') {
+        void ctx.supervisors.restartIfRunning(row.id);
+      }
+    });
+    // Tunnels added, removed, or "run connector" toggled: match the processes.
+    ctx.tunnels.on('listChanged', () => {
+      void ctx.supervisors.sync();
     });
   }
 
   /** Called once after the HTTP server listens. Never throws. */
   async start(): Promise<void> {
     const { ctx } = this;
-    const version = await ctx.supervisor.detectVersion();
+    const version = await ctx.supervisors.detectVersion();
     if (version) ctx.logger.info({ version }, 'cloudflared found');
     else
       ctx.logger.warn(
@@ -153,10 +165,9 @@ export class Lifecycle {
       );
 
     if (ctx.cloudflare.isConfigured()) {
-      void ctx.supervisor.start();
-      void this.reconcile('startup');
+      void this.boot();
     } else {
-      await ctx.supervisor.disable();
+      await ctx.supervisors.disable();
     }
 
     if (ctx.config.reconcileIntervalSeconds > 0) {
@@ -172,19 +183,37 @@ export class Lifecycle {
   async stop(): Promise<void> {
     for (const t of this.timers) clearInterval(t);
     this.timers = [];
-    await this.ctx.supervisor.stop();
+    await this.ctx.supervisors.stopAll();
   }
 
-  /** After a token was saved: make sure the tunnel exists, (re)start cloudflared, reconcile. */
-  async onCloudflareConfigured(): Promise<void> {
-    await this.ctx.tunnels.ensureTunnel();
-    await this.ctx.supervisor.restart();
+  /** Startup with a token: ensure the default tunnel, start the connectors, reconcile. */
+  private async boot(): Promise<void> {
+    try {
+      await this.ctx.tunnels.ensureDefault();
+    } catch (err) {
+      this.ctx.logger.warn({ err: errorMessage(err) }, 'could not check the default tunnel');
+    }
+    await this.ctx.supervisors.enable();
+    await this.reconcile('startup');
+  }
+
+  /**
+   * After a token was saved: forget the tunnels of the previous account if it
+   * changed, make sure the default tunnel exists, (re)start cloudflared, reconcile.
+   */
+  async onCloudflareConfigured(accountChanged = false): Promise<void> {
+    if (accountChanged) {
+      await this.ctx.supervisors.disable();
+      this.ctx.tunnels.forgetAll();
+    }
+    await this.ctx.tunnels.ensureDefault();
+    await this.ctx.supervisors.restartAll();
     void this.reconcile('token saved');
   }
 
   /** After the token was removed: stop cloudflared, nothing else to run. */
   async onCloudflareRemoved(): Promise<void> {
-    await this.ctx.supervisor.disable();
+    await this.ctx.supervisors.disable();
   }
 
   /** Full reconciliation that only logs failures. */

@@ -18,7 +18,7 @@ export async function cloudflareRoutes(app: FastifyInstance, ctx: AppContext): P
     const outcome = await ctx.cloudflare.saveToken(input);
     if (!outcome.saved) return outcome.settings;
     ctx.audit.record(userId(req), 'cloudflare.token.save', outcome.settings.account?.id);
-    await ctx.lifecycle.onCloudflareConfigured();
+    await ctx.lifecycle.onCloudflareConfigured(outcome.accountChanged);
     return ctx.cloudflare.getSettings();
   });
 

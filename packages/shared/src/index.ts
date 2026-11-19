@@ -170,6 +170,17 @@ export const TUNNEL_STATUSES = ['inactive', 'degraded', 'healthy', 'down', 'unkn
 export const tunnelStatusSchema = z.enum(TUNNEL_STATUSES);
 export type TunnelStatus = z.infer<typeof tunnelStatusSchema>;
 
+export const supervisorStatusSchema = z.object({
+  state: supervisorStateSchema,
+  pid: z.number().int().nullable(),
+  restarts: z.number().int(),
+  startedAt: z.string().nullable(),
+  lastExitCode: z.number().int().nullable(),
+  nextRetryAt: z.string().nullable(),
+  cloudflaredVersion: z.string().nullable(),
+});
+export type SupervisorStatus = z.infer<typeof supervisorStatusSchema>;
+
 export const connectorSchema = z.object({
   id: z.string(),
   version: z.string(),
@@ -196,19 +207,110 @@ export const tunnelInfoSchema = z.object({
     })
     .nullable(),
   connectors: z.array(connectorSchema),
-  supervisor: z.object({
-    state: supervisorStateSchema,
-    pid: z.number().int().nullable(),
-    restarts: z.number().int(),
-    startedAt: z.string().nullable(),
-    lastExitCode: z.number().int().nullable(),
-    nextRetryAt: z.string().nullable(),
-    cloudflaredVersion: z.string().nullable(),
-  }),
+  supervisor: supervisorStatusSchema,
 });
 export type TunnelInfo = z.infer<typeof tunnelInfoSchema>;
 
-/** POST /api/tunnel/restart -> 202. POST /api/tunnel/stop -> 202. POST /api/tunnel/start -> 202. */
+/**
+ * GET  /api/tunnel                 -> 200 TunnelInfo of the default tunnel (kept for scripts).
+ * POST /api/tunnel/restart|stop|start -> 202, on the default tunnel.
+ */
+
+/* ---- Several tunnels ---- */
+
+export const TUNNEL_ORIGINS = ['created', 'imported'] as const;
+export const tunnelOriginSchema = z.enum(TUNNEL_ORIGINS);
+export type TunnelOrigin = z.infer<typeof tunnelOriginSchema>;
+
+/** A tunnel known to Burrow. `id` is Burrow's id; `cfId` is the Cloudflare tunnel UUID. */
+export const tunnelSummarySchema = z.object({
+  id: z.number().int(),
+  cfId: z.string(),
+  name: z.string(),
+  /** `created` by Burrow, or `imported` from the account. */
+  origin: tunnelOriginSchema,
+  /** Whether Burrow runs cloudflared for this tunnel (off when it runs elsewhere). */
+  runConnector: z.boolean(),
+  /** New hosts go to the default tunnel unless another one is chosen. */
+  isDefault: z.boolean(),
+  hostCount: z.number().int(),
+  status: tunnelStatusSchema,
+  supervisor: supervisorStatusSchema,
+});
+export type TunnelSummary = z.infer<typeof tunnelSummarySchema>;
+
+/** GET /api/tunnels -> 200 */
+export const tunnelListSchema = z.object({ tunnels: z.array(tunnelSummarySchema) });
+export type TunnelList = z.infer<typeof tunnelListSchema>;
+
+/** Cloudflare tunnel names: letters, digits, dots, dashes and underscores. */
+export const tunnelNameSchema = z
+  .string()
+  .trim()
+  .regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/, 'Use letters, digits, dots, dashes or underscores');
+
+/** POST /api/tunnels -> 201 TunnelSummary. Creates a remotely managed tunnel. */
+export const createTunnelSchema = z.object({
+  name: tunnelNameSchema,
+  runConnector: z.boolean().optional().default(true),
+});
+export type CreateTunnelInput = z.input<typeof createTunnelSchema>;
+
+/** PATCH /api/tunnels/:id -> 200 TunnelSummary */
+export const updateTunnelSchema = z.object({
+  runConnector: z.boolean().optional(),
+  /** Only `true` is accepted: make this tunnel the default one. */
+  isDefault: z.literal(true).optional(),
+});
+export type UpdateTunnelInput = z.infer<typeof updateTunnelSchema>;
+
+/** A tunnel of the account that Burrow does not manage yet. */
+export const availableTunnelSchema = z.object({
+  cfId: z.string(),
+  name: z.string(),
+  status: tunnelStatusSchema,
+  createdAt: z.string(),
+  /** `cloudflare` = remotely managed (importable); `local` = config file on the connector. */
+  configSrc: z.enum(['cloudflare', 'local']),
+  /** Public hostname routes in its configuration (null when it could not be read). */
+  routeCount: z.number().int().nullable(),
+});
+export type AvailableTunnel = z.infer<typeof availableTunnelSchema>;
+
+/** GET /api/tunnels/available -> 200 */
+export const availableTunnelListSchema = z.object({ tunnels: z.array(availableTunnelSchema) });
+export type AvailableTunnelList = z.infer<typeof availableTunnelListSchema>;
+
+/** POST /api/tunnels/import -> 201 ImportTunnelResult */
+export const importTunnelSchema = z.object({
+  cfId: z.string().uuid(),
+  /** Run cloudflared for it in Burrow. Turn off if a connector already runs elsewhere. */
+  runConnector: z.boolean().optional().default(false),
+  /** Turn its public hostname routes into Burrow proxy hosts. */
+  importRoutes: z.boolean().optional().default(true),
+});
+export type ImportTunnelInput = z.input<typeof importTunnelSchema>;
+
+export const importedRouteSchema = z.object({
+  hostname: z.string(),
+  path: z.string(),
+  service: z.string(),
+  /** Set when the route was not imported (it stays on the tunnel, untouched). */
+  skipped: z.string().nullable(),
+});
+export type ImportedRoute = z.infer<typeof importedRouteSchema>;
+
+export const importTunnelResultSchema = z.object({
+  tunnel: tunnelSummarySchema,
+  routes: z.array(importedRouteSchema),
+});
+export type ImportTunnelResult = z.infer<typeof importTunnelResultSchema>;
+
+/**
+ * GET    /api/tunnels/:id                      -> 200 TunnelInfo
+ * DELETE /api/tunnels/:id?deleteOnCloudflare=  -> 204 (409 while hosts use it, or for the default tunnel)
+ * POST   /api/tunnels/:id/start|stop|restart   -> 202 supervisor status
+ */
 
 /* ------------------------------------------------------------------ */
 /* Proxy hosts                                                         */
@@ -306,6 +408,8 @@ export type AccessSettings = z.infer<typeof accessSettingsSchema>;
 
 export const proxyHostInputSchema = z.object({
   subdomain: subdomainSchema,
+  /** Tunnel to publish through (Burrow id). Defaults to the default tunnel; kept on update when omitted. */
+  tunnelId: z.number().int().positive().optional(),
   zoneId: z.string().regex(/^[a-f0-9]{32}$/),
   service: serviceUrlSchema,
   path: ingressPathSchema.optional().default(''),
@@ -348,6 +452,8 @@ export const proxyHostSchema = z.object({
   subdomain: z.string(),
   zoneId: z.string(),
   zoneName: z.string(),
+  tunnelId: z.number().int().nullable(),
+  tunnelName: z.string().nullable(),
   /** Fully qualified hostname, e.g. `app.example.com`. */
   hostname: z.string(),
   service: z.string(),
@@ -357,6 +463,8 @@ export const proxyHostSchema = z.object({
     noTLSVerify: z.boolean(),
     httpHostHeader: z.string(),
     originServerName: z.string(),
+    /** Other `originRequest` settings kept from an imported route (not editable in the UI). */
+    extra: z.record(z.unknown()),
   }),
   access: accessSettingsSchema,
   sync: z.object({
@@ -429,13 +537,15 @@ export const logLineSchema = z.object({
   level: logLevelSchema,
   source: z.enum(['cloudflared', 'burrow']),
   message: z.string(),
+  /** Name of the tunnel a cloudflared line comes from (several tunnels can run at once). */
+  tunnel: z.string().optional(),
 });
 export type LogLine = z.infer<typeof logLineSchema>;
 
 /**
  * GET /api/logs?limit=500     -> 200 { lines: LogLine[] } (most recent last)
  * GET /api/logs/stream        -> text/event-stream; each event: `id: <seq>`, `event: log`, `data: <LogLine JSON>`.
- *                                Also `event: state` with `data: TunnelInfo['supervisor']` on supervisor state changes.
+ *                                Also `event: state` with `data: SupervisorStatus & { tunnelId }` when a cloudflared changes state.
  */
 export const logListSchema = z.object({ lines: z.array(logLineSchema) });
 export type LogList = z.infer<typeof logListSchema>;

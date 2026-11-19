@@ -1,9 +1,8 @@
-import type { LogLine, LogList } from '@burrow/shared';
+import type { LogLine, LogList, SupervisorStatus } from '@burrow/shared';
 import type { FastifyInstance } from 'fastify';
 import type { ServerResponse } from 'node:http';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
-import type { SupervisorStatus } from '../services/supervisor.js';
 
 const listQuery = z.object({ limit: z.coerce.number().int().min(1).max(2000).default(500) });
 const streamQuery = z.object({ lastEventId: z.coerce.number().int().min(0).optional() });
@@ -45,21 +44,21 @@ export async function logRoutes(app: FastifyInstance, ctx: AppContext): Promise<
 
     const sendLine = (line: LogLine) =>
       res.write(`id: ${line.seq}\nevent: log\ndata: ${JSON.stringify(line)}\n\n`);
-    const sendState = (state: SupervisorStatus) =>
-      res.write(`event: state\ndata: ${JSON.stringify(state)}\n\n`);
+    const sendState = (tunnelId: number | null, state: SupervisorStatus) =>
+      res.write(`event: state\ndata: ${JSON.stringify({ ...state, tunnelId })}\n\n`);
 
     res.write('retry: 3000\n\n');
-    sendState(ctx.supervisor.status());
+    for (const row of ctx.tunnels.list()) sendState(row.id, ctx.supervisors.status(row.id));
     if (resumeFrom !== undefined) ctx.logs.since(resumeFrom).forEach(sendLine);
 
     ctx.logs.on('line', sendLine);
-    ctx.supervisor.on('state', sendState);
+    ctx.supervisors.on('state', sendState);
     const ping = setInterval(() => res.write(': ping\n\n'), 15_000);
 
     const cleanup = () => {
       clearInterval(ping);
       ctx.logs.off('line', sendLine);
-      ctx.supervisor.off('state', sendState);
+      ctx.supervisors.off('state', sendState);
       streams.delete(res);
     };
     req.raw.on('close', cleanup);

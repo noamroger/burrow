@@ -3,7 +3,12 @@
  * See packages/shared/src/index.ts for the route documentation.
  */
 import {
+  availableTunnelListSchema,
   cloudflareSettingsSchema,
+  importTunnelResultSchema,
+  supervisorStatusSchema,
+  tunnelListSchema,
+  tunnelSummarySchema,
   healthResponseSchema,
   logListSchema,
   meResponseSchema,
@@ -17,6 +22,9 @@ import {
   zoneSchema,
   type ChangePasswordInput,
   type CreateAdminInput,
+  type CreateTunnelInput,
+  type ImportTunnelInput,
+  type UpdateTunnelInput,
   type LoginInput,
   type MeResponse,
   type ProxyHostInput,
@@ -76,6 +84,21 @@ export const tunnelApi = {
   start: () => api.post('/tunnel/start'),
   stop: () => api.post('/tunnel/stop'),
   restart: () => api.post('/tunnel/restart'),
+};
+
+export const tunnelsApi = {
+  list: () => api.get('/tunnels', tunnelListSchema),
+  get: (id: number) => api.get(`/tunnels/${id}`, tunnelInfoSchema),
+  available: () => api.get('/tunnels/available', availableTunnelListSchema),
+  create: (input: CreateTunnelInput) => api.post('/tunnels', input, tunnelSummarySchema),
+  import: (input: ImportTunnelInput) =>
+    api.post('/tunnels/import', input, importTunnelResultSchema),
+  update: (id: number, input: UpdateTunnelInput) =>
+    api.patch(`/tunnels/${id}`, input, tunnelSummarySchema),
+  remove: (id: number, deleteOnCloudflare: boolean) =>
+    api.delete(`/tunnels/${id}?deleteOnCloudflare=${deleteOnCloudflare}`),
+  action: (id: number, action: 'start' | 'stop' | 'restart') =>
+    api.post(`/tunnels/${id}/${action}`, undefined, supervisorStatusSchema),
 };
 
 export const hostsApi = {

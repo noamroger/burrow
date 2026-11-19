@@ -20,6 +20,7 @@ export class LogBuffer extends EventEmitter<{ line: [LogLine] }> {
     message: string;
     source: LogLine['source'];
     time?: string;
+    tunnel?: string;
   }): LogLine {
     const line: LogLine = {
       seq: ++this.seq,
@@ -27,6 +28,7 @@ export class LogBuffer extends EventEmitter<{ line: [LogLine] }> {
       level: entry.level,
       source: entry.source,
       message: entry.message,
+      ...(entry.tunnel ? { tunnel: entry.tunnel } : {}),
     };
     this.lines.push(line);
     if (this.lines.length > this.capacity) this.lines.shift();

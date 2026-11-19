@@ -1,5 +1,5 @@
 import type { ProxyHost, Zone } from '@burrow/shared';
-import { useSaveHost } from '../api/queries';
+import { useSaveHost, useTunnels } from '../api/queries';
 import { t } from '../i18n';
 import { accessChanged, HostForm } from './HostForm';
 import { Dialog } from './ui/Dialog';
@@ -18,6 +18,7 @@ export function HostDialog({
   onClose: () => void;
 }) {
   const save = useSaveHost();
+  const tunnels = useTunnels();
   const toast = useToast();
   return (
     <Dialog
@@ -32,6 +33,7 @@ export function HostDialog({
         key={host?.id ?? 'new'}
         host={host}
         zones={zones}
+        tunnels={tunnels.data}
         onCancel={onClose}
         onSubmit={async (input) => {
           const saved = await save.mutateAsync({ id: host?.id, input });

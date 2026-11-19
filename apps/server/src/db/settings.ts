@@ -8,10 +8,12 @@ export const SettingKeys = {
   cloudflareAccountId: 'cloudflare.account_id',
   cloudflareAccountName: 'cloudflare.account_name',
   cloudflarePermissions: 'cloudflare.permissions',
-  tunnelId: 'tunnel.id',
+  /**
+   * Name of the default tunnel while it is being created. Tunnels themselves
+   * live in the `tunnels` table (the old `tunnel.id` / `tunnel.managed_ingress`
+   * keys are migrated there by 0002_tunnels.sql).
+   */
   tunnelName: 'tunnel.name',
-  /** Ingress rules Burrow wrote, as `hostname|path` keys, so orphans can be recognised. */
-  managedIngress: 'tunnel.managed_ingress',
   /** Hostnames this Burrow instance created a Cloudflare Access application for. */
   managedAccess: 'access.managed_hostnames',
 } as const;

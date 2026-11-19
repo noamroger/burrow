@@ -132,6 +132,22 @@ export class MockCloudflare {
     return full;
   }
 
+  /** Add a tunnel directly (e.g. an existing tunnel to import). */
+  addTunnel(tunnel: Partial<MockTunnel> & { name: string }): MockTunnel {
+    const full: MockTunnel = {
+      id: randomUUID(),
+      status: 'healthy',
+      config_src: 'cloudflare',
+      created_at: new Date().toISOString(),
+      deleted_at: null,
+      config: null,
+      version: 1,
+      ...tunnel,
+    };
+    this.state.tunnels.push(full);
+    return full;
+  }
+
   /** Add an Access application directly (e.g. a foreign one to test conflicts). */
   addAccessApp(app: Partial<MockAccessApp> & { name: string; domain: string }): MockAccessApp {
     const full: MockAccessApp = {
@@ -319,6 +335,9 @@ export class MockCloudflare {
             }),
           );
         }
+      }
+      if (sub === 'connections' && method === 'DELETE') {
+        return send(res, 200, envelope(null));
       }
       if (sub === 'connections' && method === 'GET') {
         return send(
