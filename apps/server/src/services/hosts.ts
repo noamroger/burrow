@@ -12,6 +12,7 @@ import {
   type ImportedRoute,
   type OriginHealth,
   type ProxyHost,
+  type ProxyHostInput,
   type ProxyHostParsedInput,
 } from '@burrow/shared';
 import { and, asc, eq, ne } from 'drizzle-orm';
@@ -21,7 +22,7 @@ import type { CfIngressRule } from '../cloudflare/types.js';
 import { proxyHosts, tunnels, zones, type ProxyHostRow, type TunnelRow } from '../db/schema.js';
 import { AppError, errorMessage, errors } from '../lib/errors.js';
 import { nowIso } from '../lib/time.js';
-import type { AuditService } from './audit.js';
+import { DOCKER_DISCOVERY, diff, type ActorLike, type AuditService } from './audit.js';
 import type { CloudflareService } from './cloudflare.js';
 import type { HealthService } from './health.js';
 import { keyOfRule } from './ingress.js';
@@ -113,6 +114,33 @@ export class HostService {
       health,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
+    };
+  }
+
+  /** The settings of a host as API input (audit snapshots and undo). */
+  toInput(row: ProxyHostRow): ProxyHostInput {
+    return {
+      subdomain: row.subdomain,
+      zoneId: row.zoneId,
+      ...(row.tunnelId !== null ? { tunnelId: row.tunnelId } : {}),
+      service: row.service,
+      path: row.path,
+      enabled: row.enabled,
+      options: {
+        noTLSVerify: row.noTlsVerify,
+        httpHostHeader: row.httpHostHeader,
+        originServerName: row.originServerName,
+      },
+      access: {
+        enabled: row.accessEnabled,
+        emails: row.accessEmails,
+        emailDomains: row.accessEmailDomains,
+        sessionDuration: toSessionDuration(row.accessSessionDuration),
+        browserRendering: row.accessBrowserRendering ?? null,
+      },
+      template: (row.template ?? null) as ProxyHostInput['template'],
+      expiresAt: row.expiresAt,
+      home: hostHomeSchema.catch(DEFAULT_HOST_HOME).parse(row.home ?? {}),
     };
   }
 
@@ -240,7 +268,7 @@ export class HostService {
   /** Create a host and publish it. */
   async create(
     input: ProxyHostParsedInput,
-    userId: number | null,
+    by: ActorLike,
     origin: HostOrigin = { source: 'manual', ref: null },
   ): Promise<ProxyHost> {
     const { hostname, path } = this.resolve(input);
@@ -263,7 +291,14 @@ export class HostService {
       await this.opts.reconciler.sync({ scope }).catch(() => undefined);
       throw failure;
     }
-    this.opts.audit.record(userId, 'host.create', hostname + path);
+    const created = this.getRow(row.id);
+    this.opts.audit.record(actorFor(by, origin), 'host.create', hostname + path, {
+      details: { note: created.service },
+      undo:
+        origin.source === 'manual'
+          ? { kind: 'host.delete', hostId: row.id, expect: this.toInput(created) }
+          : null,
+    });
     this.probeLater(row.id);
     return this.get(row.id);
   }
@@ -272,7 +307,7 @@ export class HostService {
   async update(
     id: number,
     input: ProxyHostParsedInput,
-    userId: number | null,
+    by: ActorLike,
     managed?: HostOrigin,
   ): Promise<ProxyHost> {
     const before = this.getRow(id);
@@ -301,7 +336,22 @@ export class HostService {
       await this.opts.reconciler.sync({ scope }).catch(() => undefined);
       throw failure;
     }
-    this.opts.audit.record(userId, 'host.update', hostname + path);
+    const after = this.getRow(id);
+    const changes = diff(this.toInput(before), this.toInput(after));
+    if (changes.length > 0) {
+      this.opts.audit.record(actorFor(by, managed), 'host.update', hostname + path, {
+        details: { changes },
+        undo:
+          after.source === 'manual'
+            ? {
+                kind: 'host.restore',
+                hostId: id,
+                input: this.toInput(before),
+                expect: this.toInput(after),
+              }
+            : null,
+      });
+    }
     this.opts.health.forget(id);
     this.probeLater(id);
     if (failure) throw failure;
@@ -416,12 +466,23 @@ export class HostService {
   }
 
   /** Delete a host and unpublish it. */
-  async remove(id: number, userId: number | null, managed?: HostOrigin): Promise<void> {
+  async remove(
+    id: number,
+    by: ActorLike,
+    managed?: HostOrigin,
+    reason: 'delete' | 'expire' = 'delete',
+  ): Promise<void> {
     const row = this.getRow(id);
     this.assertEditable(row, managed);
     this.opts.db.delete(proxyHosts).where(eq(proxyHosts.id, id)).run();
     this.opts.health.forget(id);
-    this.opts.audit.record(userId, 'host.delete', row.hostname + row.path);
+    this.opts.audit.record(actorFor(by, managed), `host.${reason}`, row.hostname + row.path, {
+      details: { note: row.service },
+      undo:
+        row.source === 'manual' && reason === 'delete'
+          ? { kind: 'host.recreate', input: this.toInput(row), extra: row.originRequestExtra }
+          : null,
+    });
     if (!this.opts.cloudflare.isConfigured()) return;
     try {
       await this.opts.reconciler.sync({ scope: [{ zoneId: row.zoneId, hostname: row.hostname }] });
@@ -445,8 +506,7 @@ export class HostService {
     const removed: string[] = [];
     for (const row of expired) {
       try {
-        await this.remove(row.id, null, { source: row.source, ref: row.sourceRef });
-        this.opts.audit.record(null, 'host.expire', row.hostname + row.path);
+        await this.remove(row.id, null, { source: row.source, ref: row.sourceRef }, 'expire');
         this.opts.logger.info({ hostname: row.hostname }, 'temporary host expired and removed');
         removed.push(row.hostname + row.path);
       } catch (err) {
@@ -505,6 +565,11 @@ function uniqueScope(items: SyncScopeItem[]): SyncScopeItem[] {
     seen.add(key);
     return true;
   });
+}
+
+/** Changes made by Docker discovery are logged as such. */
+function actorFor(by: ActorLike, origin?: HostOrigin): ActorLike {
+  return by === null && origin?.source === 'docker' ? DOCKER_DISCOVERY : by;
 }
 
 /** Validate an expiry: null (permanent) or a time in the future, normalised to UTC. */

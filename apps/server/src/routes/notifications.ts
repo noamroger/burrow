@@ -2,7 +2,7 @@ import type { Channel, ChannelList, ChannelTestResult } from '@burrow/shared';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
-import { userId } from '../http/session.js';
+import { actor } from '../http/session.js';
 
 const idParams = z.object({ id: z.coerce.number().int().positive() });
 
@@ -14,21 +14,21 @@ export async function notificationRoutes(app: FastifyInstance, ctx: AppContext):
 
   app.post('/api/notifications/channels', async (req, reply) => {
     const channel = ctx.notifications.create(req.body);
-    ctx.audit.record(userId(req), 'notification.create', channel.name);
+    ctx.audit.record(actor(req), 'notification.create', channel.name);
     return reply.status(201).send(channel);
   });
 
   app.put('/api/notifications/channels/:id', async (req): Promise<Channel> => {
     const { id } = idParams.parse(req.params);
     const channel = ctx.notifications.update(id, req.body);
-    ctx.audit.record(userId(req), 'notification.update', channel.name);
+    ctx.audit.record(actor(req), 'notification.update', channel.name);
     return channel;
   });
 
   app.delete('/api/notifications/channels/:id', async (req, reply) => {
     const { id } = idParams.parse(req.params);
     ctx.notifications.remove(id);
-    ctx.audit.record(userId(req), 'notification.delete', String(id));
+    ctx.audit.record(actor(req), 'notification.delete', String(id));
     return reply.status(204).send();
   });
 

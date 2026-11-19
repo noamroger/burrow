@@ -13,9 +13,10 @@ import { count } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
+import { diff } from '../services/audit.js';
 import { proxyHosts, type TunnelRow } from '../db/schema.js';
 import { errors } from '../lib/errors.js';
-import { userId } from '../http/session.js';
+import { actor } from '../http/session.js';
 
 const idParams = z.object({ id: z.coerce.number().int().positive() });
 const deleteQuery = z.object({
@@ -78,7 +79,7 @@ export async function tunnelRoutes(app: FastifyInstance, ctx: AppContext): Promi
       );
     }
     const supervisor = ctx.supervisors.get(row.id);
-    ctx.audit.record(userId(req), `tunnel.${action}`, row.name);
+    ctx.audit.record(actor(req), `tunnel.${action}`, row.name);
     if (supervisor) {
       const run =
         action === 'start'
@@ -125,7 +126,7 @@ export async function tunnelRoutes(app: FastifyInstance, ctx: AppContext): Promi
     requireConfigured();
     const input = createTunnelSchema.parse(req.body);
     const row = await ctx.tunnels.create(input);
-    ctx.audit.record(userId(req), 'tunnel.create', row.name);
+    ctx.audit.record(actor(req), 'tunnel.create', row.name);
     return reply.status(201).send(summary(row, await ctx.tunnels.statuses()));
   });
 
@@ -133,7 +134,7 @@ export async function tunnelRoutes(app: FastifyInstance, ctx: AppContext): Promi
     requireConfigured();
     const input = importTunnelSchema.parse(req.body);
     const { row } = await ctx.tunnels.import(input.cfId, input.runConnector);
-    ctx.audit.record(userId(req), 'tunnel.import', row.name);
+    ctx.audit.record(actor(req), 'tunnel.import', row.name);
     let routes: ImportTunnelResult['routes'] = [];
     if (input.importRoutes) {
       const { client, accountId } = ctx.cloudflare.getContext();
@@ -156,8 +157,26 @@ export async function tunnelRoutes(app: FastifyInstance, ctx: AppContext): Promi
   app.patch('/api/tunnels/:id', async (req): Promise<TunnelSummary> => {
     const { id } = idParams.parse(req.params);
     const input = updateTunnelSchema.parse(req.body);
+    const before = ctx.tunnels.get(id);
+    const defaultBefore = ctx.tunnels.getDefault()?.id ?? null;
     const row = ctx.tunnels.update(id, input);
-    ctx.audit.record(userId(req), 'tunnel.update', row.name);
+    const defaultAfter = ctx.tunnels.getDefault()?.id ?? null;
+    const changes = diff(
+      { runConnector: before.runConnector, defaultTunnelId: defaultBefore },
+      { runConnector: row.runConnector, defaultTunnelId: defaultAfter },
+    );
+    if (changes.length > 0) {
+      ctx.audit.record(actor(req), 'tunnel.update', row.name, {
+        details: { changes },
+        undo: {
+          kind: 'tunnel.update',
+          tunnelId: id,
+          runConnector: before.runConnector,
+          defaultTunnelId: defaultBefore,
+          expect: { runConnector: row.runConnector, defaultTunnelId: defaultAfter },
+        },
+      });
+    }
     return summary(row, await ctx.tunnels.statuses());
   });
 
@@ -185,7 +204,7 @@ export async function tunnelRoutes(app: FastifyInstance, ctx: AppContext): Promi
       }
     }
     ctx.tunnels.forget(id);
-    ctx.audit.record(userId(req), 'tunnel.delete', row.name);
+    ctx.audit.record(actor(req), 'tunnel.delete', row.name);
     return reply.status(204).send();
   });
 
@@ -194,7 +213,7 @@ export async function tunnelRoutes(app: FastifyInstance, ctx: AppContext): Promi
   app.get('/api/sync', async (): Promise<SyncResult> => ctx.reconciler.last());
 
   app.post('/api/sync', async (req): Promise<SyncResult> => {
-    ctx.audit.record(userId(req), 'sync.run');
+    ctx.audit.record(actor(req), 'sync.run');
     const { result } = await ctx.reconciler.sync();
     return result;
   });

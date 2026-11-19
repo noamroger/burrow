@@ -2,6 +2,8 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { AppContext } from '../context.js';
 import { AppError } from '../lib/errors.js';
 import { safeEqual, type AuthenticatedSession } from '../services/auth.js';
+import type { WebAuthnOrigin } from '../services/two-factor.js';
+import type { Actor } from '../services/audit.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -105,8 +107,29 @@ export function requireSession(req: FastifyRequest): void {
   }
 }
 
+/**
+ * The host name passkeys are bound to (WebAuthn RP ID) and the origins the
+ * browser may report, taken from the request: Burrow is reached on whatever
+ * address the admin uses (LAN IP, local name, public hostname).
+ */
+export function webAuthnOrigin(req: FastifyRequest): WebAuthnOrigin {
+  const host = req.host;
+  return { rpId: req.hostname, origins: [`https://${host}`, `http://${host}`] };
+}
+
 /** The authenticated user id (only call behind {@link requireAuth}). */
 export function userId(req: FastifyRequest): number {
   if (!req.auth) throw new AppError('UNAUTHORIZED', 'Authentication required', 401);
   return req.auth.user.id;
+}
+
+/** Who is making this request, for the audit log (email or API token, and IP). */
+export function actor(req: FastifyRequest): Actor {
+  const auth = req.auth;
+  if (!auth) return { userId: null, label: 'Anonymous', ip: req.ip };
+  return {
+    userId: auth.user.id,
+    label: auth.via === 'token' ? `API token "${auth.tokenName ?? '?'}"` : auth.user.email,
+    ip: req.ip,
+  };
 }

@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { hostHomeSchema } from './homepage.js';
 import { hostMaintenanceSchema } from './maintenance.js';
 import { templateIdSchema } from './templates.js';
+import { mfaChallengeSchema } from './security.js';
 
 export * from './templates.js';
 export * from './maintenance.js';
@@ -20,6 +21,8 @@ export * from './homepage.js';
 export * from './monitoring.js';
 export * from './notifications.js';
 export * from './traffic.js';
+export * from './security.js';
+export * from './audit.js';
 
 /* ------------------------------------------------------------------ */
 /* Common                                                              */
@@ -47,6 +50,7 @@ export const ERROR_CODES = [
   'RATE_LIMITED',
   'SETUP_ALREADY_DONE',
   'SETUP_REQUIRED',
+  'MFA_EXPIRED',
   'CLOUDFLARE_NOT_CONFIGURED',
   'CLOUDFLARE_TOKEN_INVALID',
   'CLOUDFLARE_PERMISSION_MISSING',
@@ -84,7 +88,11 @@ export const createAdminSchema = z.object({
 });
 export type CreateAdminInput = z.infer<typeof createAdminSchema>;
 
-/** POST /api/auth/login (public, rate limited) -> 200 MeResponse, sets session cookie */
+/**
+ * POST /api/auth/login (public, rate limited) -> 200 LoginResponse: a
+ * MeResponse (session cookie set), or an MfaChallenge when the account uses
+ * two-factor authentication.
+ */
 export const loginSchema = z.object({
   email: z.string().trim().toLowerCase().email().max(254),
   password: z.string().min(1).max(256),
@@ -99,6 +107,9 @@ export const meResponseSchema = z.object({
   csrfToken: z.string(),
 });
 export type MeResponse = z.infer<typeof meResponseSchema>;
+
+export const loginResponseSchema = z.union([meResponseSchema, mfaChallengeSchema]);
+export type LoginResponse = z.infer<typeof loginResponseSchema>;
 
 /** POST /api/auth/password -> 204 */
 export const changePasswordSchema = z.object({

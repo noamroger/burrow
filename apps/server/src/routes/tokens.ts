@@ -2,7 +2,7 @@ import { createApiTokenSchema, type ApiTokenList } from '@burrow/shared';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
-import { requireSession, userId } from '../http/session.js';
+import { actor, requireSession, userId } from '../http/session.js';
 
 const idParams = z.object({ id: z.coerce.number().int().positive() });
 
@@ -17,7 +17,7 @@ export async function tokenRoutes(app: FastifyInstance, ctx: AppContext): Promis
     requireSession(req);
     const { name } = createApiTokenSchema.parse(req.body);
     const created = ctx.apiTokens.create(userId(req), name);
-    ctx.audit.record(userId(req), 'token.create', name);
+    ctx.audit.record(actor(req), 'token.create', name);
     return reply.status(201).send(created);
   });
 
@@ -25,7 +25,7 @@ export async function tokenRoutes(app: FastifyInstance, ctx: AppContext): Promis
     requireSession(req);
     const { id } = idParams.parse(req.params);
     const row = ctx.apiTokens.remove(userId(req), id);
-    ctx.audit.record(userId(req), 'token.delete', row.name);
+    ctx.audit.record(actor(req), 'token.delete', row.name);
     return reply.status(204).send();
   });
 }

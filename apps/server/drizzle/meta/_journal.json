@@ -85,6 +85,20 @@
       "when": 1795068667931,
       "tag": "0011_homepage",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1795069507849,
+      "tag": "0012_two_factor",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1795084694829,
+      "tag": "0013_audit_undo",
+      "breakpoints": true
     }
   ]
 }

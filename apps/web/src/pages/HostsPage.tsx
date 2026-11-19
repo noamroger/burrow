@@ -16,6 +16,7 @@ import {
   useZones,
 } from '../api/queries';
 import { DriftAlert } from '../components/DriftAlert';
+import { TwoFactorHint } from '../components/TwoFactorHint';
 import { EmptyState } from '../components/EmptyState';
 import { PageHeader } from '../components/PageHeader';
 import { HealthIndicator } from '../components/HealthIndicator';
@@ -112,6 +113,7 @@ export function HostsPage() {
       />
 
       <DriftAlert />
+      <TwoFactorHint />
 
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label={t('hosts.stats.tunnel')}>

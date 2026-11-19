@@ -9,7 +9,7 @@ import {
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
-import { userId } from '../http/session.js';
+import { actor } from '../http/session.js';
 
 const idParams = z.object({ id: z.coerce.number().int().positive() });
 
@@ -28,19 +28,19 @@ export async function hostRoutes(app: FastifyInstance, ctx: AppContext): Promise
 
   app.post('/api/hosts', async (req, reply) => {
     const input = proxyHostInputSchema.parse(req.body);
-    const host = await ctx.hosts.create(input, userId(req));
+    const host = await ctx.hosts.create(input, actor(req));
     return reply.status(201).send(host);
   });
 
   app.put('/api/hosts/:id', async (req): Promise<ProxyHost> => {
     const { id } = idParams.parse(req.params);
     const input = proxyHostInputSchema.parse(req.body);
-    return ctx.hosts.update(id, input, userId(req));
+    return ctx.hosts.update(id, input, actor(req));
   });
 
   app.delete('/api/hosts/:id', async (req, reply) => {
     const { id } = idParams.parse(req.params);
-    await ctx.hosts.remove(id, userId(req));
+    await ctx.hosts.remove(id, actor(req));
     return reply.status(204).send();
   });
 

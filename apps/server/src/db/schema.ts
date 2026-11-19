@@ -4,7 +4,8 @@
  *
  * Timestamps are ISO 8601 strings; booleans are stored as 0/1 integers.
  */
-import type { HostHome, MaintenancePage, NotificationEvent } from '@burrow/shared';
+import type { AuditDetails, HostHome, MaintenancePage, NotificationEvent } from '@burrow/shared';
+import type { UndoSpec } from '../services/undo-spec.js';
 import { sql } from 'drizzle-orm';
 import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
@@ -18,8 +19,44 @@ export const users = sqliteTable('users', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   email: text('email').notNull().unique(),
   passwordHash: text('password_hash').notNull(),
+  /** TOTP secret (base32), encrypted with the SecretBox. NULL = no authenticator app. */
+  totpSecretEnc: text('totp_secret_enc'),
+  /** Last TOTP time step accepted, so a code cannot be used twice. */
+  totpLastStep: integer('totp_last_step'),
+  /** SHA-256 hashes of the unused recovery codes. */
+  recoveryCodes: text('recovery_codes', { mode: 'json' })
+    .$type<string[]>()
+    .notNull()
+    .default(sql`'[]'`),
   createdAt: timestamp('created_at'),
 });
+
+/** WebAuthn credentials (passkeys and security keys) of the admin. */
+export const passkeys = sqliteTable(
+  'passkeys',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    /** Credential id, base64url. */
+    credentialId: text('credential_id').notNull().unique(),
+    /** COSE public key, base64url. */
+    publicKey: text('public_key').notNull(),
+    counter: integer('counter').notNull().default(0),
+    transports: text('transports', { mode: 'json' })
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'`),
+    /** Host name the passkey is bound to (WebAuthn RP ID), e.g. `burrow.example.com`. */
+    rpId: text('rp_id').notNull(),
+    backedUp: integer('backed_up', { mode: 'boolean' }).notNull().default(false),
+    lastUsedAt: text('last_used_at'),
+    createdAt: timestamp('created_at'),
+  },
+  (t) => [index('passkeys_user_idx').on(t.userId)],
+);
 
 /** Server-side sessions. `id` is the SHA-256 of the cookie value, never the value itself. */
 export const sessions = sqliteTable(
@@ -199,17 +236,44 @@ export const notificationChannels = sqliteTable('notification_channels', {
   createdAt: timestamp('created_at'),
 });
 
-/** Who changed what. Never contains secrets. */
-export const auditLog = sqliteTable('audit_log', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  userId: integer('user_id'),
-  action: text('action').notNull(),
-  target: text('target'),
-  createdAt: timestamp('created_at'),
-});
+/**
+ * Who changed what, and how to take it back. Never contains secrets: details
+ * hold the non-secret fields before and after the change.
+ */
+export const auditLog = sqliteTable(
+  'audit_log',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    userId: integer('user_id'),
+    /** Who did it, as shown: an email, `API token "ci"`, `Docker discovery`, `System`… */
+    actor: text('actor').notNull().default('System'),
+    /** Client IP address, for changes made over HTTP. */
+    ip: text('ip'),
+    /** First segment of the action (`host`, `tunnel`, `auth`…), for filters. */
+    category: text('category').notNull().default(''),
+    action: text('action').notNull(),
+    target: text('target'),
+    /** AuditDetails JSON: what changed. */
+    details: text('details', { mode: 'json' }).$type<AuditDetails | null>(),
+    /** UndoSpec JSON: how to reverse the change; null when it cannot be undone. */
+    undo: text('undo', { mode: 'json' }).$type<UndoSpec | null>(),
+    /** Set once the change was undone: when, and the id of the entry that did it. */
+    undoneAt: text('undone_at'),
+    undoneById: integer('undone_by_id'),
+    /** On an undo entry: the entry it reversed. */
+    revertOf: integer('revert_of'),
+    createdAt: timestamp('created_at'),
+  },
+  (t) => [
+    index('audit_log_created_idx').on(t.createdAt),
+    index('audit_log_category_idx').on(t.category),
+  ],
+);
 
 export type UserRow = typeof users.$inferSelect;
 export type SessionRow = typeof sessions.$inferSelect;
+export type AuditRow = typeof auditLog.$inferSelect;
+export type PasskeyRow = typeof passkeys.$inferSelect;
 export type ApiTokenRow = typeof apiTokens.$inferSelect;
 export type ZoneRow = typeof zones.$inferSelect;
 export type TunnelRow = typeof tunnels.$inferSelect;

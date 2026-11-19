@@ -1,7 +1,7 @@
 import { dockerSettingsSchema, type DockerStatus } from '@burrow/shared';
 import type { FastifyInstance } from 'fastify';
 import type { AppContext } from '../context.js';
-import { userId } from '../http/session.js';
+import { actor } from '../http/session.js';
 
 /** Docker auto-discovery. Behind `requireAuth`. */
 export async function dockerRoutes(app: FastifyInstance, ctx: AppContext): Promise<void> {
@@ -11,7 +11,13 @@ export async function dockerRoutes(app: FastifyInstance, ctx: AppContext): Promi
 
   app.put('/api/docker/settings', async (req): Promise<DockerStatus> => {
     const { enabled } = dockerSettingsSchema.parse(req.body);
-    ctx.audit.record(userId(req), enabled ? 'docker.discovery.on' : 'docker.discovery.off');
-    return ctx.docker.setEnabled(enabled);
+    const was = ctx.docker.status().enabled;
+    const status = await ctx.docker.setEnabled(enabled);
+    if (was !== enabled) {
+      ctx.audit.record(actor(req), enabled ? 'docker.discovery.on' : 'docker.discovery.off', null, {
+        undo: { kind: 'docker.enabled', enabled: was },
+      });
+    }
+    return status;
   });
 }

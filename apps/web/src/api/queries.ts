@@ -2,10 +2,12 @@
  * TanStack Query hooks. Components never call `fetch` directly: they use these
  * hooks, which share caching, polling and invalidation rules.
  */
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { isApiError } from './client';
 import type {
+  AuditQuery,
   ChannelInput,
+  MeResponse,
   MonitoringRange,
   OriginHealth,
   ProxyHost,
@@ -33,11 +35,15 @@ import {
   trafficApi,
   homepageApi,
   zonesApi,
+  twoFactorApi,
+  auditApi,
 } from './endpoints';
 
 export const queryKeys = {
   setupStatus: ['setup', 'status'] as const,
   me: ['auth', 'me'] as const,
+  twoFactor: ['auth', '2fa'] as const,
+  audit: ['audit'] as const,
   cloudflare: ['cloudflare'] as const,
   zones: ['zones'] as const,
   tunnel: ['tunnel'] as const,
@@ -90,12 +96,53 @@ export function useLogin() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: authApi.login,
+    onSuccess: (res) => {
+      if (!('csrfToken' in res)) return; // second factor needed
+      qc.setQueryData(queryKeys.me, res);
+      return qc.invalidateQueries({ queryKey: queryKeys.setupStatus });
+    },
+  });
+}
+
+/** Finish a sign-in (second factor or passkey): store the new session. */
+export function useCompleteLogin<V>(mutationFn: (vars: V) => Promise<MeResponse>) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn,
     onSuccess: (me) => {
       qc.setQueryData(queryKeys.me, me);
       return qc.invalidateQueries({ queryKey: queryKeys.setupStatus });
     },
   });
 }
+
+/* ---------------------------- two-factor ----------------------------- */
+
+export function useTwoFactor() {
+  return useQuery({ queryKey: queryKeys.twoFactor, queryFn: twoFactorApi.status });
+}
+
+function useTwoFactorMutation<V, R>(mutationFn: (vars: V) => Promise<R>) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.twoFactor }),
+  });
+}
+
+export const useStartTotp = () => useMutation({ mutationFn: twoFactorApi.startTotp });
+export const useEnableTotp = () => useTwoFactorMutation(twoFactorApi.enableTotp);
+export const useDisableTotp = () => useTwoFactorMutation(twoFactorApi.disableTotp);
+export const useRegenerateCodes = () => useTwoFactorMutation(twoFactorApi.regenerateCodes);
+export const useAddPasskey = () => useTwoFactorMutation(twoFactorApi.addPasskey);
+export const useRenamePasskey = () =>
+  useTwoFactorMutation((v: { id: number; name: string }) =>
+    twoFactorApi.renamePasskey(v.id, v.name),
+  );
+export const useRemovePasskey = () =>
+  useTwoFactorMutation((v: { id: number; password: string }) =>
+    twoFactorApi.removePasskey(v.id, v.password),
+  );
 
 export function useLogout() {
   const qc = useQueryClient();
@@ -597,5 +644,25 @@ export function useHealth() {
     queryFn: healthApi.get,
     staleTime: 5 * 60_000,
     retry: false,
+  });
+}
+
+/* ------------------------------ audit log ----------------------------- */
+
+export function useAuditLog(filters: Omit<AuditQuery, 'before'>) {
+  return useInfiniteQuery({
+    queryKey: [...queryKeys.audit, filters],
+    queryFn: ({ pageParam }) => auditApi.list({ ...filters, before: pageParam }),
+    initialPageParam: undefined as number | undefined,
+    getNextPageParam: (last) => last.nextBefore ?? undefined,
+  });
+}
+
+/** Undo a change: anything may have moved, so refresh everything. */
+export function useUndoChange() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: auditApi.undo,
+    onSuccess: () => qc.invalidateQueries(),
   });
 }

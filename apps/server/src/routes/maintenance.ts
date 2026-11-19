@@ -2,7 +2,7 @@ import { maintenancePageSchema, type MaintenancePage, type ProxyHost } from '@bu
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
-import { userId } from '../http/session.js';
+import { actor } from '../http/session.js';
 
 const idParams = z.object({ id: z.coerce.number().int().positive() });
 
@@ -19,7 +19,7 @@ export async function maintenanceRoutes(app: FastifyInstance, ctx: AppContext): 
     '/api/maintenance/page',
     { bodyLimit: BODY_LIMIT },
     async (req): Promise<MaintenancePage> =>
-      ctx.maintenance.saveDefaultPage(maintenancePageSchema.parse(req.body), userId(req)),
+      ctx.maintenance.saveDefaultPage(maintenancePageSchema.parse(req.body), actor(req)),
   );
 
   app.put(
@@ -27,7 +27,7 @@ export async function maintenanceRoutes(app: FastifyInstance, ctx: AppContext): 
     { bodyLimit: BODY_LIMIT },
     async (req): Promise<ProxyHost> => {
       const { id } = idParams.parse(req.params);
-      return ctx.maintenance.setHost(id, req.body as never, userId(req));
+      return ctx.maintenance.setHost(id, req.body as never, actor(req));
     },
   );
 }
