@@ -3,7 +3,13 @@
  * hooks, which share caching, polling and invalidation rules.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { OriginHealth, ProxyHost, ProxyHostInput, ProxyHostList } from '@burrow/shared';
+import type {
+  OriginHealth,
+  ProxyHost,
+  ProxyHostInput,
+  ProxyHostList,
+  UpdateTunnelInput,
+} from '@burrow/shared';
 import {
   authApi,
   cloudflareApi,
@@ -12,6 +18,11 @@ import {
   setupApi,
   syncApi,
   tunnelApi,
+  tunnelsApi,
+  tokensApi,
+  configApi,
+  driftApi,
+  backupsApi,
   zonesApi,
 } from './endpoints';
 
@@ -21,10 +32,16 @@ export const queryKeys = {
   cloudflare: ['cloudflare'] as const,
   zones: ['zones'] as const,
   tunnel: ['tunnel'] as const,
+  tunnels: ['tunnels'] as const,
+  tunnelInfo: (id: number) => ['tunnels', id] as const,
+  availableTunnels: ['tunnels', 'available'] as const,
   hosts: ['hosts'] as const,
   sync: ['sync'] as const,
   logs: ['logs'] as const,
   health: ['health'] as const,
+  tokens: ['tokens'] as const,
+  drift: ['drift'] as const,
+  backups: ['backups'] as const,
 };
 
 /** Polling intervals (ms). */
@@ -142,6 +159,176 @@ export function useTunnelAction() {
   return useMutation({
     mutationFn: (action: 'start' | 'stop' | 'restart') => tunnelApi[action](),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.tunnel }),
+  });
+}
+
+/* ------------------------------ tunnels ------------------------------- */
+
+export function useTunnels() {
+  return useQuery({
+    queryKey: queryKeys.tunnels,
+    queryFn: tunnelsApi.list,
+    refetchInterval: POLL.tunnel,
+    select: (d) => d.tunnels,
+  });
+}
+
+export function useTunnelInfo(id: number | undefined) {
+  return useQuery({
+    queryKey: queryKeys.tunnelInfo(id ?? 0),
+    queryFn: () => tunnelsApi.get(id!),
+    enabled: id !== undefined,
+    refetchInterval: POLL.tunnel,
+  });
+}
+
+export function useAvailableTunnels(enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.availableTunnels,
+    queryFn: tunnelsApi.available,
+    enabled,
+    select: (d) => d.tunnels,
+  });
+}
+
+/** Refresh everything that depends on the tunnel list. */
+function invalidateTunnels(qc: ReturnType<typeof useQueryClient>) {
+  void qc.invalidateQueries({ queryKey: queryKeys.tunnels });
+  void qc.invalidateQueries({ queryKey: queryKeys.tunnel });
+  void qc.invalidateQueries({ queryKey: queryKeys.hosts });
+  void qc.invalidateQueries({ queryKey: queryKeys.zones });
+}
+
+export function useCreateTunnel() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: tunnelsApi.create, onSuccess: () => invalidateTunnels(qc) });
+}
+
+export function useImportTunnel() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: tunnelsApi.import, onSuccess: () => invalidateTunnels(qc) });
+}
+
+export function useUpdateTunnel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: number; input: UpdateTunnelInput }) =>
+      tunnelsApi.update(id, input),
+    onSuccess: () => invalidateTunnels(qc),
+  });
+}
+
+export function useDeleteTunnel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, deleteOnCloudflare }: { id: number; deleteOnCloudflare: boolean }) =>
+      tunnelsApi.remove(id, deleteOnCloudflare),
+    onSuccess: () => invalidateTunnels(qc),
+  });
+}
+
+export function useTunnelControl() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, action }: { id: number; action: 'start' | 'stop' | 'restart' }) =>
+      tunnelsApi.action(id, action),
+    onSuccess: (_s, { id }) => {
+      void qc.invalidateQueries({ queryKey: queryKeys.tunnelInfo(id) });
+      void qc.invalidateQueries({ queryKey: queryKeys.tunnels });
+      void qc.invalidateQueries({ queryKey: queryKeys.tunnel });
+    },
+  });
+}
+
+/* ------------------------------- drift -------------------------------- */
+
+export function useDrift() {
+  return useQuery({ queryKey: queryKeys.drift, queryFn: driftApi.get, refetchInterval: 60_000 });
+}
+
+export function useCheckDrift() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: driftApi.check,
+    onSuccess: (report) => {
+      qc.setQueryData(queryKeys.drift, report);
+      void qc.invalidateQueries({ queryKey: queryKeys.hosts });
+    },
+  });
+}
+
+export function useResolveDrift() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: driftApi.resolve,
+    onSuccess: (report) => {
+      qc.setQueryData(queryKeys.drift, report);
+      invalidateTunnels(qc);
+    },
+  });
+}
+
+export function useDriftSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: driftApi.settings,
+    onSuccess: (report) => qc.setQueryData(queryKeys.drift, report),
+  });
+}
+
+/* ------------------------------- backups ------------------------------ */
+
+export function useBackups() {
+  return useQuery({ queryKey: queryKeys.backups, queryFn: backupsApi.get });
+}
+
+export function useSaveBackups() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: backupsApi.save,
+    onSuccess: (status) => qc.setQueryData(queryKeys.backups, status),
+  });
+}
+
+export function useRunBackup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: backupsApi.run,
+    onSettled: () => void qc.invalidateQueries({ queryKey: queryKeys.backups }),
+  });
+}
+
+/* ------------------------------ API tokens ---------------------------- */
+
+export function useApiTokens() {
+  return useQuery({ queryKey: queryKeys.tokens, queryFn: tokensApi.list, select: (d) => d.tokens });
+}
+
+export function useCreateApiToken() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: tokensApi.create,
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.tokens }),
+  });
+}
+
+export function useDeleteApiToken() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: tokensApi.remove,
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.tokens }),
+  });
+}
+
+/* ---------------------------- configuration --------------------------- */
+
+export function useImportConfig() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: configApi.import,
+    onSuccess: (report) => {
+      if (!report.dryRun) invalidateTunnels(qc);
+    },
   });
 }
 

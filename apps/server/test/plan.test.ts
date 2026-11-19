@@ -195,6 +195,36 @@ describe('plan(): reconciliation table', () => {
     expect(p.ingress).toEqual([{ service: 'http_status:404' }]);
   });
 
+  it('keeps a CNAME of a hostname moving to another Burrow tunnel', () => {
+    const p = plan(
+      [],
+      actual({
+        ingress: [{ service: 'http_status:404' }],
+        dnsRecords: [cname('moved.example.com')],
+        otherHostnames: new Set(['moved.example.com']),
+      }),
+    );
+    expect(kinds(p)).toEqual([]);
+  });
+
+  it('repoints a CNAME written by another Burrow tunnel', () => {
+    const h = host('moved.example.com');
+    const p = plan(
+      [h],
+      actual({
+        ingress: synced([h]),
+        managedKeys: ['moved.example.com|'],
+        dnsRecords: [
+          cname('moved.example.com', {
+            content: `${OLD_TUNNEL}.cfargotunnel.com`,
+            comment: dnsOwnershipComment(OLD_TUNNEL),
+          }),
+        ],
+      }),
+    );
+    expect(kinds(p)).toEqual(['dns.update']);
+  });
+
   it('orphan CNAME with this tunnel comment -> dns.delete', () => {
     const rec = cname('gone.example.com');
     const p = plan([], actual({ ingress: [{ service: 'http_status:404' }], dnsRecords: [rec] }));

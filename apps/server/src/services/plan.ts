@@ -42,6 +42,12 @@ export interface ActualState {
    * hostnames get no DNS action (their records were simply not loaded).
    */
   dnsScope?: Set<string>;
+  /**
+   * Hostnames (lower case) published through *another* Burrow tunnel. Their
+   * records are never deleted as orphans by this tunnel's plan: the other
+   * tunnel's plan repoints them.
+   */
+  otherHostnames?: Set<string>;
 }
 
 export type PlannedAction =
@@ -81,7 +87,7 @@ export function desiredDnsRecord(hostname: string, tunnelId: string): CfDnsRecor
   return {
     type: 'CNAME',
     name: hostname,
-    content: `${tunnelId}.cfargotunnel.com`,
+    content: tunnelTarget(tunnelId),
     proxied: true,
     ttl: 1,
     comment: dnsOwnershipComment(tunnelId),
@@ -91,6 +97,11 @@ export function desiredDnsRecord(hostname: string, tunnelId: string): CfDnsRecor
 /** True when Burrow created this record (any Burrow tunnel). */
 export function isOwnedRecord(record: Pick<CfDnsRecord, 'comment'>): boolean {
   return (record.comment ?? '').startsWith(DNS_OWNERSHIP_PREFIX);
+}
+
+/** The CNAME target of a tunnel. */
+export function tunnelTarget(tunnelId: string): string {
+  return `${tunnelId}.cfargotunnel.com`;
 }
 
 function recordMatches(record: CfDnsRecord, want: CfDnsRecordInput): boolean {
@@ -187,6 +198,7 @@ export function plan(hosts: PlanHost[], actual: ActualState): Plan {
   for (const record of actual.dnsRecords) {
     const name = record.name.toLowerCase();
     if (byHostname.has(name)) continue;
+    if (actual.otherHostnames?.has(name)) continue;
     if ((record.comment ?? '') !== ourComment) continue;
     if (unavailable.has(record.zoneId)) continue;
     const hostIds = hosts.filter((h) => !h.enabled && sameName(h.hostname, name)).map((h) => h.id);

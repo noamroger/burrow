@@ -7,14 +7,19 @@ import { openDatabase, type Db } from './db/client.js';
 import { SettingsRepository } from './db/settings.js';
 import { errorMessage } from './lib/errors.js';
 import { SecretBox } from './lib/secretbox.js';
+import { ApiTokenService } from './services/api-tokens.js';
 import { AuditService } from './services/audit.js';
 import { AuthService } from './services/auth.js';
 import { CloudflareService } from './services/cloudflare.js';
+import { ConfigService } from './services/config-io.js';
+import { BackupService } from './backup/service.js';
+import { DriftService } from './services/drift.js';
 import { HealthService } from './services/health.js';
 import { HostService } from './services/hosts.js';
 import { LogBuffer } from './services/log-buffer.js';
 import { Reconciler } from './services/reconciler.js';
-import { Supervisor, type SupervisorOptions } from './services/supervisor.js';
+import type { SupervisorOptions } from './services/supervisor.js';
+import { SupervisorPool } from './services/supervisors.js';
 import { TunnelService } from './services/tunnel.js';
 import { ZoneService } from './services/zones.js';
 import type Database from 'better-sqlite3';
@@ -29,15 +34,20 @@ export interface AppContext {
   sqlite: Database.Database;
   settings: SettingsRepository;
   auth: AuthService;
+  apiTokens: ApiTokenService;
   audit: AuditService;
   cloudflare: CloudflareService;
   tunnels: TunnelService;
   logs: LogBuffer;
-  supervisor: Supervisor;
+  supervisors: SupervisorPool;
   reconciler: Reconciler;
   health: HealthService;
   hosts: HostService;
   zones: ZoneService;
+  /** Configuration export / import . */
+  configIo: ConfigService;
+  drift: DriftService;
+  backups: BackupService;
   lifecycle: Lifecycle;
 }
 
@@ -82,16 +92,21 @@ export function createContext(
     fetch: overrides.fetch,
     retryBaseMs: overrides.cloudflareRetryBaseMs,
   });
-  const tunnels = new TunnelService(settings, cloudflare, logger.child({ component: 'tunnel' }));
+  const tunnels = new TunnelService({
+    db,
+    settings,
+    cloudflare,
+    logger: logger.child({ component: 'tunnel' }),
+  });
   const logs = new LogBuffer(2000);
-  const supervisor = new Supervisor({
+  const supervisors = new SupervisorPool({
     binaryPath: config.cloudflaredPath,
     metricsAddress: config.cloudflaredMetrics,
-    getToken: () => tunnels.getRunToken(),
+    tunnels,
     knownSecrets: () => cloudflare.knownSecrets(),
     logs,
     logger: logger.child({ component: 'supervisor' }),
-    ...overrides.supervisor,
+    overrides: overrides.supervisor,
   });
   const reconciler = new Reconciler({
     db,
@@ -101,27 +116,53 @@ export function createContext(
     logger: logger.child({ component: 'reconciler' }),
   });
   const health = new HealthService(overrides.healthTimeoutMs ?? 5_000);
-  const hosts = new HostService({ db, reconciler, cloudflare, health, audit, logger });
+  const hosts = new HostService({ db, reconciler, cloudflare, health, audit, tunnels, logger });
   const zones = new ZoneService(db, cloudflare);
+  const version = readVersion();
+  const configIo = new ConfigService({
+    db,
+    cloudflare,
+    tunnels,
+    reconciler,
+    logger: logger.child({ component: 'config' }),
+    version,
+  });
 
   const ctx = {
     config,
     logger,
-    version: readVersion(),
+    version,
     startedAt: Date.now(),
     db,
     sqlite,
     settings,
     auth,
+    apiTokens: new ApiTokenService(db, box),
     audit,
     cloudflare,
     tunnels,
     logs,
-    supervisor,
+    supervisors,
     reconciler,
     health,
     hosts,
     zones,
+    configIo,
+    drift: new DriftService({
+      db,
+      settings,
+      reconciler,
+      logger: logger.child({ component: 'drift' }),
+      intervalSeconds: config.reconcileIntervalSeconds,
+    }),
+    backups: new BackupService({
+      sqlite,
+      settings,
+      box,
+      localDir: config.backupDir,
+      logger: logger.child({ component: 'backup' }),
+      fetch: overrides.fetch,
+    }),
   } as Omit<AppContext, 'lifecycle'> as AppContext;
   ctx.lifecycle = new Lifecycle(ctx);
   return ctx;
@@ -135,16 +176,22 @@ export class Lifecycle {
   private timers: NodeJS.Timeout[] = [];
 
   constructor(private readonly ctx: AppContext) {
-    ctx.tunnels.on('changed', () => {
+    ctx.tunnels.on('changed', (row) => {
       // A new tunnel means a new run token: restart a running cloudflared.
-      if (ctx.supervisor.status().state === 'running') void ctx.supervisor.restart();
+      if (ctx.supervisors.status(row.id).state === 'running') {
+        void ctx.supervisors.restartIfRunning(row.id);
+      }
+    });
+    // Tunnels added, removed, or "run connector" toggled: match the processes.
+    ctx.tunnels.on('listChanged', () => {
+      void ctx.supervisors.sync();
     });
   }
 
   /** Called once after the HTTP server listens. Never throws. */
   async start(): Promise<void> {
     const { ctx } = this;
-    const version = await ctx.supervisor.detectVersion();
+    const version = await ctx.supervisors.detectVersion();
     if (version) ctx.logger.info({ version }, 'cloudflared found');
     else
       ctx.logger.warn(
@@ -153,15 +200,16 @@ export class Lifecycle {
       );
 
     if (ctx.cloudflare.isConfigured()) {
-      void ctx.supervisor.start();
-      void this.reconcile('startup');
+      void this.boot();
     } else {
-      await ctx.supervisor.disable();
+      await ctx.supervisors.disable();
     }
 
     if (ctx.config.reconcileIntervalSeconds > 0) {
-      this.every(ctx.config.reconcileIntervalSeconds, () => this.reconcile('periodic'));
+      this.every(ctx.config.reconcileIntervalSeconds, () => this.checkDrift());
     }
+    // Backups: check every 5 minutes whether one is due (the schedule is in hours).
+    this.every(300, () => ctx.backups.runIfDue());
     if (ctx.config.healthcheckIntervalSeconds > 0) {
       this.every(ctx.config.healthcheckIntervalSeconds, () => ctx.hosts.checkAll());
       void ctx.hosts.checkAll().catch(() => undefined);
@@ -172,19 +220,48 @@ export class Lifecycle {
   async stop(): Promise<void> {
     for (const t of this.timers) clearInterval(t);
     this.timers = [];
-    await this.ctx.supervisor.stop();
+    await this.ctx.supervisors.stopAll();
   }
 
-  /** After a token was saved: make sure the tunnel exists, (re)start cloudflared, reconcile. */
-  async onCloudflareConfigured(): Promise<void> {
-    await this.ctx.tunnels.ensureTunnel();
-    await this.ctx.supervisor.restart();
+  /** Startup with a token: ensure the default tunnel, start the connectors, reconcile. */
+  private async boot(): Promise<void> {
+    try {
+      await this.ctx.tunnels.ensureDefault();
+    } catch (err) {
+      this.ctx.logger.warn({ err: errorMessage(err) }, 'could not check the default tunnel');
+    }
+    await this.ctx.supervisors.enable();
+    await this.checkDrift();
+  }
+
+  /**
+   * After a token was saved: forget the tunnels of the previous account if it
+   * changed, make sure the default tunnel exists, (re)start cloudflared, reconcile.
+   */
+  async onCloudflareConfigured(accountChanged = false): Promise<void> {
+    if (accountChanged) {
+      await this.ctx.supervisors.disable();
+      this.ctx.tunnels.forgetAll();
+    }
+    await this.ctx.tunnels.ensureDefault();
+    await this.ctx.supervisors.restartAll();
     void this.reconcile('token saved');
   }
 
   /** After the token was removed: stop cloudflared, nothing else to run. */
   async onCloudflareRemoved(): Promise<void> {
-    await this.ctx.supervisor.disable();
+    await this.ctx.supervisors.disable();
+  }
+
+  /**
+   * Scheduled check: compare Cloudflare with Burrow and alert on drift, or
+   * repair it right away when auto-repair is on. Never throws.
+   */
+  async checkDrift(): Promise<void> {
+    if (!this.ctx.cloudflare.isConfigured()) return;
+    await this.ctx.drift.scheduled().catch((err: unknown) => {
+      this.ctx.logger.warn({ err: errorMessage(err) }, 'drift check failed');
+    });
   }
 
   /** Full reconciliation that only logs failures. */

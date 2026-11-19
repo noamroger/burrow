@@ -3,9 +3,9 @@ import { eq } from 'drizzle-orm';
 import { EventEmitter } from 'node:events';
 import type { Logger } from 'pino';
 import { CloudflareApiError, type CloudflareClient } from '../cloudflare/client.js';
-import type { CfIngressRule } from '../cloudflare/types.js';
+import type { CfIngressRule, CfTunnelConfiguration } from '../cloudflare/types.js';
 import type { Db } from '../db/client.js';
-import { proxyHosts, zones, type ProxyHostRow } from '../db/schema.js';
+import { proxyHosts, zones, type ProxyHostRow, type TunnelRow } from '../db/schema.js';
 import { SettingKeys, type SettingsRepository } from '../db/settings.js';
 import { AppError, errorMessage } from '../lib/errors.js';
 import { Mutex } from '../lib/mutex.js';
@@ -19,8 +19,8 @@ import {
 } from './access-plan.js';
 import { PERMISSION_NAMES, type CloudflareService } from './cloudflare.js';
 import { keyOfRule } from './ingress.js';
-import { plan, type PlanHost, type ZonedDnsRecord } from './plan.js';
-import type { TunnelService } from './tunnel.js';
+import { plan, type ActualState, type Plan, type PlanHost, type ZonedDnsRecord } from './plan.js';
+import type { EnsuredTunnel, TunnelService } from './tunnel.js';
 
 /** A hostname to look at in a targeted sync. */
 export interface SyncScopeItem {
@@ -100,6 +100,33 @@ async function ignoreNotFound<T>(p: Promise<T>): Promise<void> {
   }
 }
 
+/** What Cloudflare looks like compared to Burrow, without changing anything. */
+export interface Inspection {
+  tunnels: Array<{
+    row: TunnelRow;
+    /** Live ingress of the tunnel. */
+    ingress: CfIngressRule[];
+    /** What a sync would do on this tunnel. */
+    plan: Plan;
+  }>;
+  /** DNS records loaded for the comparison. */
+  dnsRecords: ZonedDnsRecord[];
+  /** Tunnels deleted on Cloudflare. */
+  missing: TunnelRow[];
+  /** Access creates, updates, deletions and conflicts a sync would perform. */
+  access: AccessAction[];
+  /** Parts that could not be checked. */
+  failures: string[];
+}
+
+/** Everything needed to plan and apply one tunnel. */
+interface TunnelContext {
+  ensured: EnsuredTunnel;
+  configuration: CfTunnelConfiguration;
+  hosts: PlanHost[];
+  actual: ActualState;
+}
+
 /** What the Access step tells the rest of the run. */
 interface AccessStep {
   /** Hostnames that must not be published this run (protection wanted but not in place). */
@@ -118,6 +145,7 @@ export function toPlanHost(row: ProxyHostRow): PlanHost {
     noTlsVerify: row.noTlsVerify,
     httpHostHeader: row.httpHostHeader,
     originServerName: row.originServerName,
+    originRequestExtra: row.originRequestExtra,
     enabled: row.enabled,
   };
 }
@@ -159,8 +187,77 @@ export class Reconciler extends EventEmitter<{ synced: [SyncResult] }> {
     return this.mutex.run(() => this.execute(options.scope));
   }
 
+  /**
+   * Compare Cloudflare with Burrow without writing anything (drift
+   * detection). Deleted tunnels are reported, not recreated.
+   */
+  inspect(): Promise<Inspection> {
+    if (!this.opts.cloudflare.isConfigured()) {
+      return Promise.reject(
+        new AppError('CLOUDFLARE_NOT_CONFIGURED', 'Cloudflare is not configured yet.', 400),
+      );
+    }
+    return this.mutex.run(async () => {
+      const { client, accountId } = this.opts.cloudflare.getContext();
+      const { ok, missing, failed } = await this.opts.tunnels.inspectAll();
+      const failures = failed.map((f) => `${f.row.name}: ${f.error.message}`);
+      const rows = this.opts.db.select().from(proxyHosts).all();
+      const defaultId = this.opts.tunnels.getDefault()?.id ?? null;
+      const tunnelOf = (row: ProxyHostRow) => row.tunnelId ?? defaultId;
+      const { records, unavailable } = await this.loadDns(client, rows, undefined);
+      for (const [, reason] of unavailable) failures.push(reason);
+
+      const tunnels: Inspection['tunnels'] = [];
+      for (const t of ok) {
+        try {
+          const configuration = await client.getTunnelConfiguration(accountId, t.tunnel.id);
+          const ingress = configuration.config?.ingress ?? [];
+          const own = rows.filter((r) => tunnelOf(r) === t.row.id);
+          const p = plan(own.map(toPlanHost), {
+            tunnelId: t.tunnel.id,
+            ingress,
+            managedKeys: t.row.managedIngress,
+            dnsRecords: records,
+            unavailableZones: unavailable,
+            otherHostnames: new Set(
+              rows
+                .filter((r) => tunnelOf(r) !== t.row.id && r.enabled)
+                .map((r) => r.hostname.toLowerCase()),
+            ),
+          });
+          tunnels.push({ row: t.row, ingress, plan: p });
+        } catch (err) {
+          failures.push(`${t.row.name}: ${errorMessage(err)}`);
+        }
+      }
+
+      // Access, read-only: only when Burrow protects or manages something.
+      let access: AccessAction[] = [];
+      const managed = new Set(this.opts.settings.get<string[]>(SettingKeys.managedAccess) ?? []);
+      const wanted = desiredAccess(rows.map(toAccessHost));
+      for (const t of tunnels) {
+        for (const a of t.plan.actions) {
+          if (a.kind === 'host.conflict') wanted.delete(a.hostname.toLowerCase());
+        }
+      }
+      if (wanted.size > 0 || managed.size > 0) {
+        try {
+          const [apps, policies] = await Promise.all([
+            client.listAccessApps(accountId),
+            client.listAccessPolicies(accountId),
+          ]);
+          const ap = planAccess(wanted, { apps, policies }, { managed });
+          access = [...ap.ensure, ...ap.remove];
+        } catch (err) {
+          failures.push(`Cloudflare Access: ${toAccessError(err).message}`);
+        }
+      }
+      return { tunnels, dnsRecords: records, missing, access, failures };
+    });
+  }
+
   private async execute(initialScope: SyncScopeItem[] | undefined): Promise<SyncOutcome> {
-    const { db, settings, logger } = this.opts;
+    const { db, logger } = this.opts;
     let scope = initialScope;
     const startedAt = nowIso();
     const actions: SyncAction[] = [];
@@ -177,174 +274,90 @@ export class Reconciler extends EventEmitter<{ synced: [SyncResult] }> {
 
     try {
       const { client, accountId } = this.opts.cloudflare.getContext();
-      const { tunnel, changed } = await this.opts.tunnels.ensureTunnel();
-      if (changed) {
-        actions.push({ kind: 'tunnel.create', target: tunnel.name, ok: true, error: null });
+      const { ok: ensured, failed } = await this.opts.tunnels.ensureAll();
+      for (const t of ensured.filter((x) => x.changed)) {
+        actions.push({ kind: 'tunnel.create', target: t.row.name, ok: true, error: null });
         scope = undefined; // new tunnel: rewrite everything
       }
       rows = db.select().from(proxyHosts).all();
+      const defaultId = ensured[0]!.row.id;
+      const tunnelOf = (row: ProxyHostRow) => row.tunnelId ?? defaultId;
 
-      const configuration = await client.getTunnelConfiguration(accountId, tunnel.id);
-      const currentIngress: CfIngressRule[] = configuration.config?.ingress ?? [];
-      const managedKeys = settings.get<string[]>(SettingKeys.managedIngress) ?? [];
+      for (const f of failed) {
+        actions.push({
+          kind: 'ingress.update',
+          target: f.row.name,
+          ok: false,
+          error: f.error.message,
+        });
+        for (const row of rows)
+          if (tunnelOf(row) === f.row.id && inScope(row)) fail(row.id, f.error);
+      }
+
       const { records, unavailable } = await this.loadDns(client, rows, scope);
+      const dnsScope = scope ? new Set(scope.map((s) => s.hostname.toLowerCase())) : undefined;
 
-      const planHosts = rows.map(toPlanHost);
-      const actualState = {
-        tunnelId: tunnel.id,
-        ingress: currentIngress,
-        managedKeys,
-        dnsRecords: records,
-        unavailableZones: unavailable,
-        dnsScope: scope ? new Set(scope.map((s) => s.hostname.toLowerCase())) : undefined,
-      };
+      const contexts: TunnelContext[] = [];
+      for (const t of ensured) {
+        const own = rows.filter((r) => tunnelOf(r) === t.row.id);
+        try {
+          const configuration = await client.getTunnelConfiguration(accountId, t.tunnel.id);
+          contexts.push({
+            ensured: t,
+            configuration,
+            hosts: own.map(toPlanHost),
+            actual: {
+              tunnelId: t.tunnel.id,
+              ingress: configuration.config?.ingress ?? [],
+              managedKeys: t.row.managedIngress,
+              dnsRecords: records,
+              unavailableZones: unavailable,
+              dnsScope,
+              otherHostnames: new Set(
+                rows
+                  .filter((r) => tunnelOf(r) !== t.row.id && r.enabled)
+                  .map((r) => r.hostname.toLowerCase()),
+              ),
+            },
+          });
+        } catch (err) {
+          const e = toAppError(err);
+          actions.push({ kind: 'ingress.update', target: t.row.name, ok: false, error: e.message });
+          for (const row of own) if (inScope(row)) fail(row.id, e);
+        }
+      }
 
       // Cloudflare Access comes first, so a protected hostname is never public,
       // not even for a moment. Hostnames with a DNS conflict are skipped: Burrow
       // will not publish them, so it must not put an Access app in front of them.
       const dnsConflicts = new Set(
-        plan(planHosts, actualState)
-          .actions.filter((a) => a.kind === 'host.conflict')
-          .map((a) => a.hostname.toLowerCase()),
+        contexts.flatMap((c) =>
+          plan(c.hosts, c.actual)
+            .actions.filter((a) => a.kind === 'host.conflict')
+            .map((a) => a.hostname.toLowerCase()),
+        ),
       );
       const access = await this.syncAccess(client, accountId, rows, scope, dnsConflicts, {
         actions,
         fail,
       });
 
-      // Fail closed: a host whose protection could not be put in place is unpublished.
-      const p = plan(
-        planHosts.map((h) =>
-          access.blocked.has(h.hostname.toLowerCase()) ? { ...h, enabled: false } : h,
-        ),
-        actualState,
-      );
-      for (const [id, e] of p.hostErrors) {
-        fail(id, new AppError(e.code, e.message, e.code === 'DNS_CONFLICT' ? 409 : 502));
-      }
-
-      let liveIngress = currentIngress;
       let ingressFailed = false;
-      const failedCreates = new Set<string>();
-
-      for (const action of p.actions) {
-        if (ingressFailed && action.kind !== 'host.conflict') break;
-        switch (action.kind) {
-          case 'ingress.update': {
-            try {
-              await client.putTunnelConfiguration(accountId, tunnel.id, {
-                ...(configuration.config ?? {}),
-                ingress: action.rules,
-              });
-              liveIngress = action.rules;
-              settings.set(SettingKeys.managedIngress, p.managedKeys);
-              actions.push({ kind: 'ingress.update', target: tunnel.name, ok: true, error: null });
-            } catch (err) {
-              const e = toAppError(err);
-              ingressFailed = true;
-              actions.push({
-                kind: 'ingress.update',
-                target: tunnel.name,
-                ok: false,
-                error: e.message,
-              });
-              for (const row of rows) if (inScope(row)) fail(row.id, e);
-            }
-            break;
-          }
-          case 'host.conflict':
-            actions.push({
-              kind: 'host.conflict',
-              target: action.hostname,
-              ok: false,
-              error: action.reason,
-            });
-            break;
-          case 'dns.create':
-          case 'dns.update': {
-            try {
-              const record =
-                action.kind === 'dns.create'
-                  ? await client.createDnsRecord(action.zoneId, action.record)
-                  : await client.updateDnsRecord(action.zoneId, action.recordId, action.record);
-              recordIds.set(action.hostname, record.id);
-              actions.push({ kind: action.kind, target: action.hostname, ok: true, error: null });
-            } catch (err) {
-              const e = toAppError(err);
-              actions.push({
-                kind: action.kind,
-                target: action.hostname,
-                ok: false,
-                error: e.message,
-              });
-              for (const id of action.hostIds) fail(id, e);
-              if (action.kind === 'dns.create') failedCreates.add(action.hostname);
-            }
-            break;
-          }
-          case 'dns.delete': {
-            try {
-              await client.deleteDnsRecord(action.zoneId, action.recordId);
-              actions.push({ kind: 'dns.delete', target: action.hostname, ok: true, error: null });
-            } catch (err) {
-              const e = toAppError(err);
-              actions.push({
-                kind: 'dns.delete',
-                target: action.hostname,
-                ok: false,
-                error: e.message,
-              });
-              for (const id of action.hostIds) fail(id, e);
-            }
-            break;
-          }
-        }
+      for (const c of contexts) {
+        const r = await this.applyTunnel(client, accountId, c, access.blocked, {
+          actions,
+          fail,
+          recordIds,
+          rows: rows.filter((row) => tunnelOf(row) === c.ensured.row.id && inScope(row)),
+        });
+        if (r.ingressFailed) ingressFailed = true;
       }
 
-      if (!ingressFailed && !p.actions.some((a) => a.kind === 'ingress.update')) {
-        settings.set(SettingKeys.managedIngress, p.managedKeys);
-      }
-
-      // Compensate: a hostname whose CNAME could not be created must not stay in the ingress.
-      if (failedCreates.size > 0 && !ingressFailed) {
-        const drop = (r: CfIngressRule) =>
-          !!r.hostname &&
-          failedCreates.has(r.hostname.toLowerCase()) &&
-          p.managedKeys.includes(keyOfRule(r));
-        const compensated = liveIngress.filter((r) => !drop(r));
-        if (compensated.length !== liveIngress.length) {
-          try {
-            await client.putTunnelConfiguration(accountId, tunnel.id, {
-              ...(configuration.config ?? {}),
-              ingress: compensated,
-            });
-            settings.set(
-              SettingKeys.managedIngress,
-              p.managedKeys.filter((k) => !failedCreates.has(k.split('|')[0]!)),
-            );
-            actions.push({
-              kind: 'ingress.update',
-              target: `${tunnel.name} (rollback)`,
-              ok: true,
-              error: null,
-            });
-          } catch (err) {
-            actions.push({
-              kind: 'ingress.update',
-              target: `${tunnel.name} (rollback)`,
-              ok: false,
-              error: toAppError(err).message,
-            });
-          }
-        }
-      }
-
-      for (const [hostname, id] of p.dnsRecordIds)
-        if (!recordIds.has(hostname)) recordIds.set(hostname, id);
-
-      // Remove protection only once the routes it guarded are gone: if the
+      // Remove protection only once the routes it guarded are gone: if a
       // tunnel configuration could not be written, keep it for the next run.
-      if (!ingressFailed) await access.finish();
+      if (!ingressFailed && failed.length === 0 && contexts.length === ensured.length) {
+        await access.finish();
+      }
     } catch (err) {
       const e = toAppError(err);
       logger.warn({ err: e.message }, 'reconciliation failed');
@@ -369,6 +382,155 @@ export class Reconciler extends EventEmitter<{ synced: [SyncResult] }> {
     }
     this.emit('synced', result);
     return { result, hosts: hostResults };
+  }
+
+  /** Write one tunnel's planned ingress and DNS changes. */
+  private async applyTunnel(
+    client: CloudflareClient,
+    accountId: string,
+    c: TunnelContext,
+    blocked: Set<string>,
+    out: {
+      actions: SyncAction[];
+      fail: (id: number, error: AppError) => void;
+      recordIds: Map<string, string>;
+      /** This tunnel's hosts that are in scope. */
+      rows: ProxyHostRow[];
+    },
+  ): Promise<{ ingressFailed: boolean }> {
+    const { actions, fail, recordIds } = out;
+    const { row: tunnelRow, tunnel } = c.ensured;
+    const { configuration } = c;
+    const tunnels = this.opts.tunnels;
+
+    // Fail closed: a host whose protection could not be put in place is unpublished.
+    const p = plan(
+      c.hosts.map((h) => (blocked.has(h.hostname.toLowerCase()) ? { ...h, enabled: false } : h)),
+      c.actual,
+    );
+    for (const [id, e] of p.hostErrors) {
+      fail(id, new AppError(e.code, e.message, e.code === 'DNS_CONFLICT' ? 409 : 502));
+    }
+
+    let liveIngress = c.actual.ingress;
+    let ingressFailed = false;
+    const failedCreates = new Set<string>();
+
+    for (const action of p.actions) {
+      if (ingressFailed && action.kind !== 'host.conflict') break;
+      switch (action.kind) {
+        case 'ingress.update': {
+          try {
+            await client.putTunnelConfiguration(accountId, tunnel.id, {
+              ...(configuration.config ?? {}),
+              ingress: action.rules,
+            });
+            liveIngress = action.rules;
+            tunnels.setManagedIngress(tunnelRow.id, p.managedKeys);
+            actions.push({ kind: 'ingress.update', target: tunnel.name, ok: true, error: null });
+          } catch (err) {
+            const e = toAppError(err);
+            ingressFailed = true;
+            actions.push({
+              kind: 'ingress.update',
+              target: tunnel.name,
+              ok: false,
+              error: e.message,
+            });
+            for (const row of out.rows) fail(row.id, e);
+          }
+          break;
+        }
+        case 'host.conflict':
+          actions.push({
+            kind: 'host.conflict',
+            target: action.hostname,
+            ok: false,
+            error: action.reason,
+          });
+          break;
+        case 'dns.create':
+        case 'dns.update': {
+          try {
+            const record =
+              action.kind === 'dns.create'
+                ? await client.createDnsRecord(action.zoneId, action.record)
+                : await client.updateDnsRecord(action.zoneId, action.recordId, action.record);
+            recordIds.set(action.hostname, record.id);
+            actions.push({ kind: action.kind, target: action.hostname, ok: true, error: null });
+          } catch (err) {
+            const e = toAppError(err);
+            actions.push({
+              kind: action.kind,
+              target: action.hostname,
+              ok: false,
+              error: e.message,
+            });
+            for (const id of action.hostIds) fail(id, e);
+            if (action.kind === 'dns.create') failedCreates.add(action.hostname);
+          }
+          break;
+        }
+        case 'dns.delete': {
+          try {
+            await client.deleteDnsRecord(action.zoneId, action.recordId);
+            actions.push({ kind: 'dns.delete', target: action.hostname, ok: true, error: null });
+          } catch (err) {
+            const e = toAppError(err);
+            actions.push({
+              kind: 'dns.delete',
+              target: action.hostname,
+              ok: false,
+              error: e.message,
+            });
+            for (const id of action.hostIds) fail(id, e);
+          }
+          break;
+        }
+      }
+    }
+
+    if (!ingressFailed && !p.actions.some((a) => a.kind === 'ingress.update')) {
+      tunnels.setManagedIngress(tunnelRow.id, p.managedKeys);
+    }
+
+    // Compensate: a hostname whose CNAME could not be created must not stay in the ingress.
+    if (failedCreates.size > 0 && !ingressFailed) {
+      const drop = (r: CfIngressRule) =>
+        !!r.hostname &&
+        failedCreates.has(r.hostname.toLowerCase()) &&
+        p.managedKeys.includes(keyOfRule(r));
+      const compensated = liveIngress.filter((r) => !drop(r));
+      if (compensated.length !== liveIngress.length) {
+        try {
+          await client.putTunnelConfiguration(accountId, tunnel.id, {
+            ...(configuration.config ?? {}),
+            ingress: compensated,
+          });
+          tunnels.setManagedIngress(
+            tunnelRow.id,
+            p.managedKeys.filter((k) => !failedCreates.has(k.split('|')[0]!)),
+          );
+          actions.push({
+            kind: 'ingress.update',
+            target: `${tunnel.name} (rollback)`,
+            ok: true,
+            error: null,
+          });
+        } catch (err) {
+          actions.push({
+            kind: 'ingress.update',
+            target: `${tunnel.name} (rollback)`,
+            ok: false,
+            error: toAppError(err).message,
+          });
+        }
+      }
+    }
+
+    for (const [hostname, id] of p.dnsRecordIds)
+      if (!recordIds.has(hostname)) recordIds.set(hostname, id);
+    return { ingressFailed };
   }
 
   /**

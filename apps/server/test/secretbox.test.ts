@@ -23,6 +23,15 @@ describe('SecretBox', () => {
     expect(box.decrypt(a)).toBe('my cloudflare token');
   });
 
+  it('computes keyed fingerprints that depend on the key and the purpose', () => {
+    const a = SecretBox.fromPassphrase('a'.repeat(40));
+    const b = SecretBox.fromPassphrase('b'.repeat(40));
+    expect(a.mac('api-token', 'x')).toBe(a.mac('api-token', 'x'));
+    expect(a.mac('api-token', 'x')).toMatch(/^[0-9a-f]{64}$/);
+    expect(a.mac('api-token', 'x')).not.toBe(b.mac('api-token', 'x'));
+    expect(a.mac('api-token', 'x')).not.toBe(a.mac('other', 'x'));
+  });
+
   it('derives the same key from the same BURROW_SECRET', () => {
     const encrypted = SecretBox.fromPassphrase('s'.repeat(40)).encrypt('hello');
     expect(SecretBox.fromPassphrase('s'.repeat(40)).decrypt(encrypted)).toBe('hello');

@@ -12,8 +12,10 @@ import {
   useRunSync,
   useSaveHost,
   useTunnel,
+  useTunnels,
   useZones,
 } from '../api/queries';
+import { DriftAlert } from '../components/DriftAlert';
 import { EmptyState } from '../components/EmptyState';
 import { PageHeader } from '../components/PageHeader';
 import { HealthIndicator } from '../components/HealthIndicator';
@@ -104,6 +106,8 @@ export function HostsPage() {
           </>
         }
       />
+
+      <DriftAlert />
 
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label={t('hosts.stats.tunnel')}>
@@ -342,6 +346,8 @@ function HostTable({
 }
 
 function HostnameLink({ host }: { host: ProxyHost }) {
+  const tunnels = useTunnels();
+  const several = (tunnels.data?.length ?? 0) > 1;
   const path = host.path.replace(/^\^/, '').replace(/\$$/, '');
   return (
     <div className="min-w-0">
@@ -373,6 +379,11 @@ function HostnameLink({ host }: { host: ProxyHost }) {
       {host.path ? (
         <p className="mt-0.5 truncate font-mono text-xs text-fg-muted" title={t('hosts.pathTitle')}>
           {t('hosts.pathLabel')} {host.path}
+        </p>
+      ) : null}
+      {several && host.tunnelName ? (
+        <p className="mt-0.5 truncate text-xs text-fg-muted">
+          {t('hosts.viaTunnel', { name: host.tunnelName })}
         </p>
       ) : null}
     </div>

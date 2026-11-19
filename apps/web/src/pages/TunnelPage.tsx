@@ -1,10 +1,25 @@
 /**
- * Tunnel: Cloudflare-side status and connectors, the local cloudflared
- * supervisor, and the live log stream.
+ * Tunnels: pick a tunnel, see its Cloudflare-side status and connectors, its
+ * local cloudflared supervisor and settings, and the live log stream.
+ * Tunnels can be created or imported from the account here.
  */
 import { useState, type ReactNode } from 'react';
-import { useTunnel, useTunnelAction } from '../api/queries';
+import { useSearchParams } from 'react-router';
+import type { TunnelSummary } from '@burrow/shared';
+import {
+  useDeleteTunnel,
+  useTunnelControl,
+  useTunnelInfo,
+  useTunnels,
+  useUpdateTunnel,
+} from '../api/queries';
 import { LogViewer } from '../components/LogViewer';
+import { CreateTunnelDialog, ImportTunnelDialog } from '../components/TunnelDialogs';
+import { Badge, StatusDot } from '../components/ui/Badge';
+import { Checkbox } from '../components/ui/Field';
+import { Switch } from '../components/ui/Switch';
+import { tunnelTone } from '../components/TunnelStatusBadge';
+import { cn } from '../lib/cn';
 import { PageHeader } from '../components/PageHeader';
 import { SupervisorBadge, TunnelStatusBadge } from '../components/TunnelStatusBadge';
 import { Alert } from '../components/ui/Alert';
@@ -20,21 +35,42 @@ import { errorMessage } from '../lib/errors';
 import { formatDateTime, formatRelative, formatUptime } from '../lib/format';
 
 export function TunnelPage() {
-  const tunnel = useTunnel();
-  const action = useTunnelAction();
+  const tunnels = useTunnels();
+  const [params, setParams] = useSearchParams();
+  const list = tunnels.data ?? [];
+  const selected =
+    list.find((x) => String(x.id) === params.get('tunnel')) ??
+    list.find((x) => x.isDefault) ??
+    list[0];
+  const select = (id: number) => setParams({ tunnel: String(id) }, { replace: true });
+
+  const tunnel = useTunnelInfo(selected?.id);
+  const action = useTunnelControl();
   const toast = useToast();
   const logs = useLogStream();
   const now = useNow(5_000);
   const [confirmStop, setConfirmStop] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [importing, setImporting] = useState(false);
+
+  // With several tunnels, only show the selected tunnel's cloudflared lines.
+  const lines =
+    list.length > 1 && selected
+      ? logs.lines.filter((l) => !l.tunnel || l.tunnel === selected.name)
+      : logs.lines;
 
   const run = (kind: 'start' | 'stop' | 'restart') =>
-    action.mutate(kind, {
-      onSuccess: () => {
-        toast.show(t(`tunnel.action.${kind}Sent`), 'info');
-        setConfirmStop(false);
+    selected &&
+    action.mutate(
+      { id: selected.id, action: kind },
+      {
+        onSuccess: () => {
+          toast.show(t(`tunnel.action.${kind}Sent`), 'info');
+          setConfirmStop(false);
+        },
+        onError: (error) => toast.show(errorMessage(error), 'danger'),
       },
-      onError: (error) => toast.show(errorMessage(error), 'danger'),
-    });
+    );
 
   const supervisor = tunnel.data?.supervisor;
   const running =
@@ -42,7 +78,7 @@ export function TunnelPage() {
     (supervisor.state === 'running' ||
       supervisor.state === 'starting' ||
       supervisor.state === 'backoff');
-  const pending = action.isPending ? action.variables : undefined;
+  const pending = action.isPending ? action.variables?.action : undefined;
 
   return (
     <>
@@ -50,52 +86,67 @@ export function TunnelPage() {
         title={t('tunnel.title')}
         description={t('tunnel.description')}
         actions={
-          supervisor && supervisor.state !== 'disabled' ? (
-            <>
-              {running ? (
-                <Button
-                  variant="secondary"
-                  icon="stop"
-                  onClick={() => setConfirmStop(true)}
-                  disabled={action.isPending}
-                >
-                  {t('tunnel.stop')}
-                </Button>
-              ) : (
-                <Button
-                  variant="secondary"
-                  icon="play"
-                  onClick={() => run('start')}
-                  loading={pending === 'start'}
-                  disabled={action.isPending}
-                >
-                  {t('tunnel.start')}
-                </Button>
-              )}
-              <Button
-                icon="restart"
-                onClick={() => run('restart')}
-                loading={pending === 'restart'}
-                disabled={action.isPending}
-              >
-                {t('tunnel.restart')}
-              </Button>
-            </>
-          ) : null
+          <>
+            <Button variant="secondary" icon="download" onClick={() => setImporting(true)}>
+              {t('tunnels.import')}
+            </Button>
+            <Button variant="secondary" icon="plus" onClick={() => setCreating(true)}>
+              {t('tunnels.add')}
+            </Button>
+          </>
         }
       />
 
-      {tunnel.isPending ? (
+      {list.length > 1 ? (
+        <TunnelPicker tunnels={list} selectedId={selected?.id} onSelect={select} />
+      ) : null}
+
+      {selected && supervisor && supervisor.state !== 'disabled' ? (
+        <div className="mb-4 flex flex-wrap justify-end gap-2">
+          {running ? (
+            <Button
+              variant="secondary"
+              icon="stop"
+              onClick={() => setConfirmStop(true)}
+              disabled={action.isPending}
+            >
+              {t('tunnel.stop')}
+            </Button>
+          ) : (
+            <Button
+              variant="secondary"
+              icon="play"
+              onClick={() => run('start')}
+              loading={pending === 'start'}
+              disabled={action.isPending}
+            >
+              {t('tunnel.start')}
+            </Button>
+          )}
+          <Button
+            icon="restart"
+            onClick={() => run('restart')}
+            loading={pending === 'restart'}
+            disabled={action.isPending}
+          >
+            {t('tunnel.restart')}
+          </Button>
+        </div>
+      ) : null}
+
+      {tunnels.isPending || (selected && tunnel.isPending) ? (
         <PageSpinner />
-      ) : tunnel.isError ? (
+      ) : tunnels.isError || tunnel.isError ? (
         <Alert tone="danger" title={t('tunnel.loadFailed')}>
-          {errorMessage(tunnel.error)}
+          {errorMessage(tunnels.error ?? tunnel.error)}
         </Alert>
+      ) : !selected || !tunnel.data ? (
+        <p className="text-sm text-fg-muted">{t('tunnel.noTunnel')}</p>
       ) : (
         <div className="space-y-6">
           {supervisor?.state === 'disabled' ? (
             <Alert tone="info" title={t('supervisor.disabled')}>
-              {t('tunnel.disabledHint')}
+              {selected.runConnector ? t('tunnel.disabledHint') : t('tunnels.notRunHint')}
             </Alert>
           ) : null}
           {supervisor?.state === 'backoff' && supervisor.nextRetryAt ? (
@@ -176,6 +227,11 @@ export function TunnelPage() {
             <CardHeader title={t('tunnel.connections')} description={t('tunnel.connectionsHint')} />
             <ConnectorsTable connectors={tunnel.data.connectors} now={now} />
           </Card>
+
+          <TunnelSettingsCard
+            tunnel={selected}
+            onDeleted={() => setParams({}, { replace: true })}
+          />
         </div>
       )}
 
@@ -186,7 +242,7 @@ export function TunnelPage() {
           </h2>
           <p className="text-sm text-fg-muted">{t('logs.description')}</p>
         </div>
-        <LogViewer lines={logs.lines} status={logs.status} onClear={logs.clear} />
+        <LogViewer lines={lines} status={logs.status} onClear={logs.clear} />
       </section>
 
       <ConfirmDialog
@@ -198,7 +254,165 @@ export function TunnelPage() {
         onCancel={() => setConfirmStop(false)}
         onConfirm={() => run('stop')}
       />
+      <CreateTunnelDialog
+        open={creating}
+        onClose={() => setCreating(false)}
+        onCreated={(id) => {
+          setCreating(false);
+          select(id);
+          toast.show(t('tunnels.created'));
+        }}
+      />
+      <ImportTunnelDialog
+        open={importing}
+        onClose={() => setImporting(false)}
+        onImported={(id) => select(id)}
+      />
     </>
+  );
+}
+
+function TunnelPicker({
+  tunnels,
+  selectedId,
+  onSelect,
+}: {
+  tunnels: TunnelSummary[];
+  selectedId: number | undefined;
+  onSelect: (id: number) => void;
+}) {
+  return (
+    <nav aria-label={t('tunnels.pick')} className="mb-6 flex flex-wrap gap-2">
+      {tunnels.map((tunnel) => {
+        const active = tunnel.id === selectedId;
+        return (
+          <button
+            key={tunnel.id}
+            type="button"
+            aria-current={active ? 'page' : undefined}
+            onClick={() => onSelect(tunnel.id)}
+            className={cn(
+              'inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors',
+              active
+                ? 'border-accent bg-surface text-fg shadow-sm'
+                : 'border-border text-fg-muted hover:bg-surface hover:text-fg',
+            )}
+          >
+            <StatusDot tone={tunnelTone(tunnel.status)} />
+            {tunnel.name}
+            {tunnel.isDefault ? <Badge tone="accent">{t('tunnels.default')}</Badge> : null}
+            <span className="text-xs text-fg-muted tabular-nums">{tunnel.hostCount}</span>
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
+function TunnelSettingsCard({
+  tunnel,
+  onDeleted,
+}: {
+  tunnel: TunnelSummary;
+  onDeleted: () => void;
+}) {
+  const update = useUpdateTunnel();
+  const remove = useDeleteTunnel();
+  const toast = useToast();
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleteOnCloudflare, setDeleteOnCloudflare] = useState(tunnel.origin === 'created');
+  const onError = (error: unknown) => toast.show(errorMessage(error), 'danger');
+
+  return (
+    <Card>
+      <CardHeader
+        title={t('tunnels.settings')}
+        description={
+          tunnel.origin === 'imported' ? t('tunnels.originImported') : t('tunnels.originCreated')
+        }
+        actions={
+          <>
+            {!tunnel.isDefault ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                icon="star"
+                loading={update.isPending && update.variables?.input.isDefault === true}
+                onClick={() =>
+                  update.mutate({ id: tunnel.id, input: { isDefault: true } }, { onError })
+                }
+              >
+                {t('tunnels.makeDefault')}
+              </Button>
+            ) : null}
+            <Button
+              variant="ghost"
+              size="sm"
+              icon="trash"
+              className="hover:text-danger"
+              disabled={tunnel.isDefault}
+              title={tunnel.isDefault ? t('tunnels.deleteDefault') : undefined}
+              onClick={() => {
+                setDeleteOnCloudflare(tunnel.origin === 'created');
+                setConfirmDelete(true);
+              }}
+            >
+              {t('tunnels.delete')}
+            </Button>
+          </>
+        }
+      />
+      <CardBody>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium">{t('tunnels.runConnector')}</p>
+            <p className="text-xs text-fg-muted">{t('tunnels.runConnectorHint')}</p>
+          </div>
+          <Switch
+            checked={tunnel.runConnector}
+            label={t('tunnels.runConnector')}
+            disabled={update.isPending}
+            onChange={(runConnector) =>
+              update.mutate({ id: tunnel.id, input: { runConnector } }, { onError })
+            }
+          />
+        </div>
+      </CardBody>
+
+      <ConfirmDialog
+        open={confirmDelete}
+        title={t('tunnels.deleteTitle', { name: tunnel.name })}
+        description={
+          tunnel.hostCount > 0
+            ? t('tunnels.deleteHasHosts', { count: tunnel.hostCount })
+            : t('tunnels.deleteBody')
+        }
+        confirmLabel={t('tunnels.delete')}
+        loading={remove.isPending}
+        onCancel={() => setConfirmDelete(false)}
+        onConfirm={() =>
+          remove.mutate(
+            { id: tunnel.id, deleteOnCloudflare },
+            {
+              onSuccess: () => {
+                setConfirmDelete(false);
+                toast.show(t('tunnels.deleted', { name: tunnel.name }), 'info');
+                onDeleted();
+              },
+              onError,
+            },
+          )
+        }
+      >
+        <Checkbox
+          id={`delete-cf-${tunnel.id}`}
+          checked={deleteOnCloudflare}
+          onChange={(e) => setDeleteOnCloudflare(e.target.checked)}
+          label={t('tunnels.deleteOnCloudflare')}
+          description={t('tunnels.deleteOnCloudflareHint')}
+        />
+      </ConfirmDialog>
+    </Card>
   );
 }
 

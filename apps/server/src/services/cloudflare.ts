@@ -35,6 +35,8 @@ export const PERMISSION_NAMES = {
 export interface SaveTokenOutcome {
   saved: boolean;
   settings: CloudflareSettings;
+  /** True when the token belongs to another account than before: tunnels must be forgotten. */
+  accountChanged?: boolean;
 }
 
 /**
@@ -177,17 +179,15 @@ export class CloudflareService {
 
     const s = this.opts.settings;
     const previousAccount = s.get<string>(SettingKeys.cloudflareAccountId);
-    if (previousAccount && previousAccount !== account!.id) {
-      // Tunnels belong to an account: start fresh in the new one.
-      s.delete(SettingKeys.tunnelId, SettingKeys.tunnelName, SettingKeys.managedIngress);
-    }
+    // Tunnels belong to an account: the caller starts fresh in the new one.
+    const accountChanged = Boolean(previousAccount && previousAccount !== account!.id);
     s.set(SettingKeys.cloudflareToken, this.opts.box.encrypt(token));
     s.set(SettingKeys.cloudflareAccountId, account!.id);
     s.set(SettingKeys.cloudflareAccountName, account!.name);
     s.set(SettingKeys.cloudflarePermissions, permissions);
     this.cached = { token, client };
     this.opts.logger.info({ accountId: account!.id }, 'cloudflare token saved');
-    return { saved: true, settings: this.getSettings() };
+    return { saved: true, settings: this.getSettings(), accountChanged };
   }
 
   /** Forget the token and account. The tunnel id is kept so it can be reused later. */

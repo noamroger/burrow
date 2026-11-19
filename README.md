@@ -57,8 +57,17 @@ When you remove the service, Burrow removes the route and the DNS record.
   logs in the browser.
 - **Health at a glance**: tunnel status, connected Cloudflare data centers,
   and a reachability check for every service.
-- **Self-healing sync**: if something changes on Cloudflare, Burrow notices
-  and puts things back the way you configured them.
+- **Several tunnels**: one per site (home, VPS…), each host picks its
+  tunnel. Import a tunnel you already made in the Cloudflare dashboard,
+  with its routes.
+- **Drift alerts**: if someone edits a route, a DNS record or an Access app
+  in the Cloudflare dashboard, Burrow shows what changed and lets you revert
+  it or keep it (or repairs it automatically, if you prefer).
+- **Backups**: scheduled copies of the database to a folder or to
+  S3-compatible storage such as Cloudflare R2, with retention.
+- **Export, import and REST API**: move your configuration to another server
+  as one JSON file, and script everything with API tokens and the built-in
+  OpenAPI documentation at `/api/docs` (see [docs/api.md](docs/api.md)).
 - **Secure by default**: argon2id passwords, encrypted API token, CSRF
   protection, login rate limiting, non-root container.
 
@@ -202,18 +211,27 @@ the application cannot be created, the host is not published.
 Everything is configured from the UI. These environment variables are all
 optional:
 
-| Variable                | Default       | Description                                                                                                                                                               |
-| ----------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PORT`                  | `8080`        | Port of the web UI                                                                                                                                                        |
-| `BURROW_SECRET`         | _(generated)_ | Key used to encrypt the API token (32+ characters). If not set, a random key is created in `/data/.secret`. Set it if you want to back up `/data` without the key inside. |
-| `TZ`                    | `UTC`         | Time zone used in logs                                                                                                                                                    |
-| `LOG_LEVEL`             | `info`        | `debug`, `info`, `warn` or `error`                                                                                                                                        |
-| `TRUST_PROXY`           | `false`       | Set to `true` if you put the UI behind another reverse proxy                                                                                                              |
-| `BURROW_SECURE_COOKIES` | `auto`        | `true` forces `Secure` cookies (UI served over HTTPS)                                                                                                                     |
-| `PUID` / `PGID`         | `1000`        | User and group ids Burrow runs as. On start, Burrow makes `/data` belong to them (you never need to `chown` it).                                                          |
+| Variable                     | Default         | Description                                                                                                                                                               |
+| ---------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PORT`                       | `8080`          | Port of the web UI                                                                                                                                                        |
+| `BURROW_SECRET`              | _(generated)_   | Key used to encrypt the API token (32+ characters). If not set, a random key is created in `/data/.secret`. Set it if you want to back up `/data` without the key inside. |
+| `TZ`                         | `UTC`           | Time zone used in logs                                                                                                                                                    |
+| `LOG_LEVEL`                  | `info`          | `debug`, `info`, `warn` or `error`                                                                                                                                        |
+| `TRUST_PROXY`                | `false`         | Set to `true` if you put the UI behind another reverse proxy                                                                                                              |
+| `BURROW_SECURE_COOKIES`      | `auto`          | `true` forces `Secure` cookies (UI served over HTTPS)                                                                                                                     |
+| `BACKUP_DIR`                 | `/data/backups` | Where scheduled backups go when the destination is "Folder on the server"                                                                                                 |
+| `RECONCILE_INTERVAL_SECONDS` | `300`           | How often Burrow checks for changes made in the Cloudflare dashboard (`0`: only at startup and on demand)                                                                 |
+| `PUID` / `PGID`              | `1000`          | User and group ids Burrow runs as. On start, Burrow makes `/data` belong to them (you never need to `chown` it).                                                          |
 
 All data lives in `/data` (SQLite database and secret key). Back up this
-folder.
+folder, or turn on scheduled backups in **Settings › Backups**: Burrow then
+copies its database every few hours to `/data/backups` or to S3-compatible
+storage (Cloudflare R2, AWS S3, MinIO…) and keeps the last N copies.
+
+To restore a backup: stop Burrow, unzip it (`gunzip burrow-….db.gz`), put it
+in `/data` as `burrow.db`, and start Burrow. The Cloudflare token inside is
+encrypted with the instance key, so keep `/data/.secret` (or your
+`BURROW_SECRET`) with your backups.
 
 <details>
 <summary><strong>Permissions on <code>/data</code>, <code>user:</code> and hardened setups</strong></summary>
@@ -363,15 +381,21 @@ checks, multi-arch image.
 **v0.2**: private hosts protected by Cloudflare Access (allowed emails and
 email domains, session length).
 
+**v0.3**: several tunnels and tunnel import, configuration export and
+import, REST API with OpenAPI docs and API tokens, drift alerts, scheduled
+backups (folder or S3/R2).
+
 **Next:**
 
 - [ ] Docker auto-discovery with labels (`burrow.host=app.example.com`,
       `burrow.port=3000`), read-only socket, optional
 - [x] Cloudflare Access applications and policies ("only my email can open this")
 - [ ] More Access rules (identity provider groups, countries, service tokens)
-- [ ] Several tunnels, import an existing tunnel
-- [ ] Config export and import
-- [ ] Documented REST API (OpenAPI)
+- [x] Several tunnels, import an existing tunnel
+- [x] Config export and import
+- [x] Documented REST API (OpenAPI)
+- [x] Drift alerts (changes made in the Cloudflare dashboard)
+- [x] Scheduled backups (folder or S3/R2)
 - [ ] Notifications (Discord, ntfy, webhook)
 - [ ] French translation
 

@@ -11,6 +11,7 @@ import {
   assertCsrf,
   clearSessionCookie,
   requireAuth,
+  requireSession,
   SESSION_COOKIE,
   setSessionCookie,
   userId,
@@ -72,6 +73,7 @@ export async function authRoutes(app: FastifyInstance, ctx: AppContext): Promise
     '/api/auth/password',
     { preHandler: requireAuth(ctx), config: { rateLimit: LOGIN_RATE_LIMIT } },
     async (req, reply) => {
+      requireSession(req);
       const input = changePasswordSchema.parse(req.body);
       await ctx.auth.changePassword(
         userId(req),

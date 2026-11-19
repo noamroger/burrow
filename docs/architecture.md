@@ -56,17 +56,22 @@ its types from them. Changing the API means changing this package first.
 
 ## 3. Data model (SQLite)
 
-| Table         | Purpose                                          | Key columns                                                                                                                                                                                                                                                                                                      |
-| ------------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `users`       | Admin accounts (one in V1, table ready for more) | `id`, `email` (unique), `password_hash` (argon2id), `created_at`                                                                                                                                                                                                                                                 |
-| `sessions`    | Server-side sessions                             | `id` (random 32 bytes, hashed with SHA-256 in DB), `user_id`, `csrf_token`, `expires_at`, `created_at`                                                                                                                                                                                                           |
-| `settings`    | Key/value app settings                           | `key`, `value` (JSON). Holds `cloudflare.account_id`, `cloudflare.token` (**encrypted**), `tunnel.id`, `tunnel.name`                                                                                                                                                                                             |
-| `zones`       | Zones the admin enabled for use                  | `id` (Cloudflare zone id), `name`, `enabled`                                                                                                                                                                                                                                                                     |
-| `proxy_hosts` | Desired state of each published service          | `id`, `subdomain`, `zone_id`, `hostname` (computed FQDN, unique), `service` (origin URL), `path`, `no_tls_verify`, `http_host_header`, `origin_server_name`, `enabled`, `dns_record_id`, `sync_status` (`pending` \| `synced` \| `error` \| `drift`), `sync_error`, `last_synced_at`, `created_at`, `updated_at` |
-| `audit_log`   | Who changed what (no secrets)                    | `id`, `user_id`, `action`, `target`, `created_at`                                                                                                                                                                                                                                                                |
+| Table         | Purpose                                                           | Key columns                                                                                                                                                                                                                                                                                                      |
+| ------------- | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `users`       | Admin accounts (one in V1, table ready for more)                  | `id`, `email` (unique), `password_hash` (argon2id), `created_at`                                                                                                                                                                                                                                                 |
+| `sessions`    | Server-side sessions                                              | `id` (random 32 bytes, hashed with SHA-256 in DB), `user_id`, `csrf_token`, `expires_at`, `created_at`                                                                                                                                                                                                           |
+| `settings`    | Key/value app settings                                            | `key`, `value` (JSON). Holds `cloudflare.account_id`, `cloudflare.token` (**encrypted**), `access.managed_hostnames`                                                                                                                                                                                             |
+| `tunnels`     | Tunnels Burrow manages ([ADR 0006](adr/0006-multiple-tunnels.md)) | `id`, `cf_id` (Cloudflare UUID), `name`, `origin` (`created` \| `imported`), `run_connector`, `is_default`, `managed_ingress` (JSON keys of the rules Burrow wrote)                                                                                                                                              |
+| `zones`       | Zones the admin enabled for use                                   | `id` (Cloudflare zone id), `name`, `enabled`                                                                                                                                                                                                                                                                     |
+| `proxy_hosts` | Desired state of each published service                           | `id`, `subdomain`, `zone_id`, `hostname` (computed FQDN, unique), `service` (origin URL), `path`, `no_tls_verify`, `http_host_header`, `origin_server_name`, `enabled`, `dns_record_id`, `sync_status` (`pending` \| `synced` \| `error` \| `drift`), `sync_error`, `last_synced_at`, `created_at`, `updated_at` |
+| `api_tokens`  | Personal API tokens for scripts ([docs/api.md](api.md))           | `id`, `user_id`, `name`, `hint` (first characters), `token_hash` (HMAC-SHA256 with the instance key), `last_used_at`, `created_at`                                                                                                                                                                               |
+| `audit_log`   | Who changed what (no secrets)                                     | `id`, `user_id`, `action`, `target`, `created_at`                                                                                                                                                                                                                                                                |
 
-V2 extension points: `tunnels` table (multi-tunnel, `proxy_hosts.tunnel_id`),
-`proxy_hosts.source` (`manual` \| `docker`), `notification_channels`.
+`proxy_hosts.tunnel_id` points at the tunnel that carries the host (`NULL` =
+the default tunnel) and `proxy_hosts.origin_request_extra` keeps unknown
+`originRequest` keys of imported routes.
+
+Extension points: `proxy_hosts.source` (`manual` \| `docker`), `notification_channels`.
 
 Cloudflare Access protection lives on `proxy_hosts` too: `access_enabled`,
 `access_emails` (JSON array), `access_email_domains` (JSON array),
@@ -85,6 +90,26 @@ automatically at startup.
 - The logger (pino) redacts `authorization`, `token`, `password`, `cookie` and
   any value matching a Cloudflare token pattern. cloudflared output is scrubbed
   the same way before it reaches the ring buffer.
+
+### 4.1 Backups
+
+`BackupService` (`src/backup/`) copies the database with the SQLite online
+backup API (consistent while Burrow runs), gzips it as
+`burrow-YYYYMMDD-HHmmss.db.gz` (UTC) and writes it to `BACKUP_DIR` or to an
+S3-compatible bucket. The S3 client is four SigV4-signed calls (`aws4fetch`):
+PutObject, GetObject, DeleteObject, ListObjectsV2; for Cloudflare R2 the
+endpoint is `https://<account id>.r2.cloudflarestorage.com` with region
+`auto`. The S3 secret key is stored encrypted like the Cloudflare token and is
+never returned by the API.
+
+A timer checks every 5 minutes whether a backup is due (interval in hours,
+from the last run; a failed run is retried within the hour). After each
+backup, files beyond the retention count are deleted; only files matching the
+name pattern are ever listed or deleted. Events `completed` / `failed` are the
+hook for notifications.
+
+A backup contains the encrypted Cloudflare token: restoring it elsewhere needs
+the same `/data/.secret` or `BURROW_SECRET`.
 
 ## 5. Flow: adding a proxy host
 
@@ -124,8 +149,10 @@ UI                 API (HostService)                 Cloudflare
 ## 6. Reconciliation (idempotence)
 
 Cloudflare is the source of truth for what exists there; SQLite is the source
-of truth for what the user _wants_. The `Reconciler` runs at startup, every
-5 minutes, and on demand (`POST /api/sync`).
+of truth for what the user _wants_. The `Reconciler` runs at startup, after
+each change made in Burrow, and on demand (`POST /api/sync`). Every
+`RECONCILE_INTERVAL_SECONDS` (5 minutes by default) a drift check runs instead
+(§6.2): it only writes when automatic repair is on.
 
 For every enabled host it computes the desired ingress rule and CNAME, compares
 them with the live config and DNS records, and:
@@ -139,6 +166,11 @@ them with the live config and DNS records, and:
 | Ingress rule / CNAME ours but no host row  | Orphan: removed (it was ours)                            |
 | Rule in ingress that Burrow did not create | Kept untouched (foreign rule)                            |
 | Tunnel deleted on Cloudflare               | Recreate tunnel, rewrite everything, restart cloudflared |
+| Imported tunnel deleted on Cloudflare      | Its hosts are marked `error` (not recreated)             |
+
+With several tunnels, one run checks every tunnel: DNS records are listed
+once, then each tunnel's ingress is planned and written. A hostname moving
+between tunnels keeps its CNAME (the new tunnel's plan repoints it).
 
 The reconciler is a pure function `plan(desired, actual) → actions[]` plus an
 executor. The pure part is unit-tested exhaustively without network.
@@ -167,8 +199,33 @@ Access API cannot be listed, hosts already protected stay published as they
 are, and hosts never protected are not published. When a host update fails
 in the Access step, `HostService` reverts the change, like a DNS conflict.
 
+### 6.2 Drift detection
+
+Someone may edit, in the Cloudflare dashboard, a route, a CNAME or an Access
+application that Burrow manages. `Reconciler.inspect()` runs the same reads and
+the same pure planners as a sync but executes nothing; `findDrift()` turns the
+planned actions into a list of differences (`ingress.changed`,
+`dns.missing`, `access.extra`…), each tied to its hosts.
+
+`DriftService` keeps the last report (`GET /api/drift`), marks the affected
+hosts `drift`, and emits `detected` when the list changes (the hook for
+notifications). The UI shows an alert on the hosts page with two choices:
+
+| Choice     | Effect                                                                                                                                                                                                                                                                     |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Revert** | A full sync: Cloudflare matches Burrow again.                                                                                                                                                                                                                              |
+| **Keep**   | Cloudflare wins where it can: a changed route is copied into the host (service, path, origin options), a host whose route or CNAME was removed or replaced is disabled. The rest (e.g. a removed Access app) is reverted, because Burrow never lowers protection silently. |
+
+With **Repair automatically** (Settings, off by default) every scheduled check
+reverts differences right away, as v0.1 did.
+
+Limit: any change saved in Burrow rewrites a tunnel's whole ingress, so it also
+reverts pending route differences of that tunnel. Resolve the alert first.
+
 ## 7. cloudflared supervision
 
+A `SupervisorPool` keeps one `Supervisor` per tunnel whose connector runs in
+the container (`run_connector`); each tags its log lines with the tunnel name.
 `Supervisor` is a small state machine:
 
 ```
@@ -237,8 +294,16 @@ stopped ──start()──▶ starting ──first "Registered tunnel connectio
   state comes from.
 - **Access applications**: done (§6.1). More rule types (IdP groups,
   countries, service tokens) only extend `desiredPolicy()`.
-- **Multiple tunnels / import**: `tunnels` table, one Supervisor per tunnel.
-- **OpenAPI**: shared zod schemas → `@fastify/swagger` via `fastify-type-provider-zod`.
+- **Multiple tunnels / import**: done ([ADR 0006](adr/0006-multiple-tunnels.md)).
+- **OpenAPI**: done. `src/http/openapi.ts` lists the routes with their shared
+  zod schemas and converts them with `zod-to-json-schema`; `@fastify/swagger`
+  serves the document, `@fastify/swagger-ui` the docs page (see
+  [docs/api.md](api.md)). Personal API tokens (`api_tokens` table, HMAC-SHA256
+  only) authenticate scripts without the CSRF header.
+- **Config export/import**: done (`ConfigService`, [docs/api.md](api.md)).
+- **Backups**: done (§4.1). `BackupService` emits `completed` and `failed`.
+- **Drift detection**: done (§6.2). `DriftService` emits `detected` for the
+  notification channels.
 - **Notifications**: an internal event bus already emits `host.synced`,
   `host.error`, `tunnel.down`; channels subscribe to it.
 - **i18n**: all UI strings go through a single `t()` helper from day one

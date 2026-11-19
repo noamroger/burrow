@@ -22,6 +22,8 @@ export interface IngressHost {
   noTlsVerify: boolean;
   httpHostHeader: string;
   originServerName: string;
+  /** Other `originRequest` keys kept from an imported route. */
+  originRequestExtra?: Record<string, unknown>;
 }
 
 /** Stable identity of a rule: `hostname|path`. */
@@ -38,7 +40,10 @@ export function keyOfRule(rule: CfIngressRule): string {
 export function buildIngressRule(host: IngressHost): CfIngressRule {
   const rule: CfIngressRule = { hostname: host.hostname, service: host.service };
   if (host.path) rule.path = host.path;
-  const originRequest: CfOriginRequest = {};
+  const originRequest: CfOriginRequest = { ...(host.originRequestExtra ?? {}) };
+  delete originRequest.noTLSVerify;
+  delete originRequest.httpHostHeader;
+  delete originRequest.originServerName;
   if (host.noTlsVerify) originRequest.noTLSVerify = true;
   if (host.httpHostHeader) originRequest.httpHostHeader = host.httpHostHeader;
   if (host.originServerName) originRequest.originServerName = host.originServerName;

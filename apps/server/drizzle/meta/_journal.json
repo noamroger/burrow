@@ -15,6 +15,20 @@
       "when": 1795019127377,
       "tag": "0001_access",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1795057373089,
+      "tag": "0002_tunnels",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1795058021292,
+      "tag": "0003_api_tokens",
+      "breakpoints": true
     }
   ]
 }
