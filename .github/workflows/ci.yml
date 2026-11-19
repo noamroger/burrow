@@ -109,6 +109,12 @@ jobs:
           docker top burrow -o pid,uid,args
           test "$(docker top burrow -o pid,uid,args | awk '$3 == "node" { print $2 }')" = "1000"
           docker exec burrow cloudflared --version
+          # Password reset script: runs as the data owner, never leaves root-owned files.
+          curl -fsS -X POST -H 'content-type: application/json' \
+            -d '{"email":"ci@example.com","password":"correct horse battery staple"}' \
+            http://127.0.0.1:8080/api/setup/admin > /dev/null
+          docker exec burrow burrow-reset-password --generate --disable-2fa
+          test -z "$(sudo find data -not -uid 1000)"
 
       - name: Container logs
         if: always()
