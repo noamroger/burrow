@@ -82,8 +82,6 @@ export const en = {
   'setup.cloudflare.description':
     'Burrow needs an API token to create your tunnel and DNS records. The token is encrypted before it is stored and never leaves this container.',
   'setup.cloudflare.howTo': 'Create a token in 1 minute',
-  'setup.cloudflare.scopeHint':
-    'Tip: under "Zone Resources", include only the domains you want to use with Burrow.',
   'setup.cloudflare.submit': 'Verify and save',
   'setup.zones.title': 'Choose your domains',
   'setup.zones.description':
@@ -120,13 +118,21 @@ export const en = {
   'token.checkOptional': 'not granted (optional)',
   'token.checksFix':
     'Edit the token on the Cloudflare dashboard to add the missing permissions, then verify again.',
-  'token.step1': 'Open',
-  'token.step2': 'Click "Create Token", then "Create Custom Token".',
-  'token.step3':
-    'Add the four required permissions listed below, plus the optional Access one if you want to protect private hosts with a sign-in.',
-  'token.step4':
-    'Under "Account Resources" and "Zone Resources", pick your account and your domains.',
-  'token.step5': 'Create the token, copy it and paste it here. Cloudflare shows it only once.',
+  'token.guide.open':
+    'Open the API Tokens page of your Cloudflare profile (My Profile › API Tokens):',
+  'token.guide.custom':
+    'Click "Create Token". At the bottom of the list, next to "Create Custom Token", click "Get started". Give the token a name, for example "Burrow".',
+  'token.guide.permissions':
+    'Under "Permissions", each row has three dropdowns. Fill the first row, then click "+ Add more" for each of the next ones:',
+  'token.guide.zoneTip':
+    'Can\'t find DNS or Zone? They only appear once the first dropdown of the row is set to "Zone" (it starts on "Account"). In the second dropdown, type "DNS" to filter the list and pick the entry named exactly "DNS", not "DNS Settings" or "DNS Firewall".',
+  'token.guide.resources': 'Further down, choose which account and domains the token can reach:',
+  'token.guide.yourAccount': 'your account',
+  'token.guide.yourDomain': 'your domain',
+  'token.guide.resourcesHint':
+    'Click "+ Add more" under Zone Resources to add more domains, or pick "All zones from an account" to allow every domain in the account. Leave "Client IP Address Filtering" and "TTL" empty.',
+  'token.guide.create':
+    'Click "Continue to summary", then "Create Token". Copy the token and paste it below: Cloudflare shows it only once.',
 
   /* Zones */
   'zones.enable': 'Allow Burrow to use {zone}',
@@ -353,6 +359,7 @@ export const en = {
   'settings.notConfigured': 'Not configured',
   'settings.replaceToken': 'Replace token',
   'settings.replaceHint': 'The new token is verified before it replaces the current one.',
+  'settings.howToCreate': 'How to create a token',
   'settings.removeToken': 'Remove token',
   'settings.removeTitle': 'Remove the Cloudflare token?',
   'settings.removeBody':
