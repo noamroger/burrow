@@ -75,6 +75,30 @@ NAME=$(curl -s -X POST -H "Authorization: Bearer $TOKEN" $BURROW/api/backups | j
 curl -s -H "Authorization: Bearer $TOKEN" -o "$NAME" $BURROW/api/backups/$NAME
 ```
 
+Expose a service for two hours, starting from a template:
+
+```bash
+UNTIL=$(date -u -d '+2 hours' +%Y-%m-%dT%H:%M:%SZ)
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d "{\"subdomain\":\"demo\",\"zoneId\":\"$ZONE\",\"service\":\"http://jellyfin:8096\",\"template\":\"jellyfin\",\"expiresAt\":\"$UNTIL\"}" \
+  $BURROW/api/hosts
+```
+
+Put a host in maintenance until tomorrow morning, then bring it back:
+
+```bash
+curl -s -X PUT -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"enabled":true,"until":"2026-11-20T08:00:00Z"}' $BURROW/api/hosts/12/maintenance
+curl -s -X PUT -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"enabled":false}' $BURROW/api/hosts/12/maintenance
+```
+
+Rescan Docker labels now:
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $TOKEN" $BURROW/api/docker/scan | jq '.containers'
+```
+
 ## Configuration file
 
 `GET /api/config/export` returns:
