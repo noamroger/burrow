@@ -296,7 +296,7 @@ stopped ──start()──▶ starting ──first "Registered tunnel connectio
   countries, service tokens) only extend `desiredPolicy()`.
 - **Multiple tunnels / import**: done ([ADR 0006](adr/0006-multiple-tunnels.md)).
 - **OpenAPI**: done. `src/http/openapi.ts` lists the routes with their shared
-  zod schemas and converts them with `zod-to-json-schema`; `@fastify/swagger`
+  zod schemas and converts them with zod's built-in `z.toJSONSchema()`; `@fastify/swagger`
   serves the document, `@fastify/swagger-ui` the docs page (see
   [docs/api.md](api.md)). Personal API tokens (`api_tokens` table, HMAC-SHA256
   only) authenticate scripts without the CSRF header.

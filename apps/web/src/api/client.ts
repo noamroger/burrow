@@ -10,10 +10,10 @@
  *   not thrown, so a minor contract drift never blanks the UI.
  */
 import { apiErrorSchema, meResponseSchema, type ErrorCode } from '@burrow/shared';
-import type { ZodType, ZodTypeDef } from 'zod';
+import type { ZodType } from 'zod';
 
 /** Any zod schema whose parsed output is `T`. */
-export type Schema<T> = ZodType<T, ZodTypeDef, unknown>;
+export type Schema<T> = ZodType<T, unknown>;
 
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 

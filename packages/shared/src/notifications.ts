@@ -115,6 +115,6 @@ export const webhookPayloadSchema = z.object({
   message: z.string(),
   at: z.string(),
   /** Event details: hostname, tunnel, error, duration… */
-  data: z.record(z.unknown()),
+  data: z.record(z.string(), z.unknown()),
 });
 export type WebhookPayload = z.infer<typeof webhookPayloadSchema>;

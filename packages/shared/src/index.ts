@@ -495,10 +495,9 @@ export const proxyHostInputSchema = z
         httpHostHeader: z.string().trim().max(255).optional().default(''),
         originServerName: z.string().trim().max(255).optional().default(''),
       })
-      .optional()
-      .default({}),
+      .prefault({}),
     /** Cloudflare Access protection. Applies to the whole hostname (every path). */
-    access: accessSettingsInputSchema.optional().default({}),
+    access: accessSettingsInputSchema.prefault({}),
     /** Service template the host was made from (see GET /api/templates), or null. */
     template: templateIdSchema.optional().default(null),
     /**
@@ -579,7 +578,7 @@ export const proxyHostSchema = z.object({
     httpHostHeader: z.string(),
     originServerName: z.string(),
     /** Other `originRequest` settings kept from an imported route (not editable in the UI). */
-    extra: z.record(z.unknown()),
+    extra: z.record(z.string(), z.unknown()),
   }),
   access: accessSettingsSchema,
   /** Service template the host was made from, or null. */
@@ -900,11 +899,10 @@ export const configHostSchema = z.object({
       noTLSVerify: z.boolean().optional().default(false),
       httpHostHeader: z.string().trim().max(255).optional().default(''),
       originServerName: z.string().trim().max(255).optional().default(''),
-      extra: z.record(z.unknown()).optional().default({}),
+      extra: z.record(z.string(), z.unknown()).optional().default({}),
     })
-    .optional()
-    .default({}),
-  access: accessSettingsInputSchema.optional().default({}),
+    .prefault({}),
+  access: accessSettingsInputSchema.prefault({}),
   template: z.string().trim().toLowerCase().nullable().optional().default(null),
   /** Homepage tile. Missing: unchanged (new hosts: defaults). */
   home: hostHomeSchema.optional(),

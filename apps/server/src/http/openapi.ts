@@ -8,7 +8,6 @@
 import * as s from '@burrow/shared';
 import type { ZodTypeAny } from 'zod';
 import { z } from 'zod';
-import { zodToJsonSchema } from 'zod-to-json-schema';
 
 type Method = 'get' | 'post' | 'put' | 'patch' | 'delete';
 
@@ -733,11 +732,17 @@ const ops: Operation[] = [
   },
 ];
 
-function schema(zod: ZodTypeAny): Record<string, unknown> {
-  const json = zodToJsonSchema(zod, { target: 'openApi3', $refStrategy: 'none' }) as Record<
-    string,
-    unknown
-  >;
+/**
+ * JSON Schema (OpenAPI 3.0 flavour) for a zod schema. Request bodies and
+ * query parameters describe what the client may send (`input`: fields with a
+ * default are optional); responses describe what the server returns.
+ */
+function schema(zod: ZodTypeAny, io: 'input' | 'output' = 'output'): Record<string, unknown> {
+  const json = z.toJSONSchema(zod, {
+    target: 'openapi-3.0',
+    io,
+    unrepresentable: 'any',
+  }) as Record<string, unknown>;
   delete json.$schema;
   return json;
 }
@@ -764,7 +769,7 @@ export function buildOpenApi(version: string): Record<string, unknown> {
         in: 'query',
         required: false,
         description: q.description,
-        schema: schema(q.schema),
+        schema: schema(q.schema, 'input'),
       });
     }
     const status = String(op.status ?? 200);
@@ -787,7 +792,7 @@ export function buildOpenApi(version: string): Record<string, unknown> {
         ? {
             requestBody: {
               required: true,
-              content: { 'application/json': { schema: schema(op.body) } },
+              content: { 'application/json': { schema: schema(op.body, 'input') } },
             },
           }
         : {}),
