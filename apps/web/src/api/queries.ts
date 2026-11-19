@@ -4,6 +4,7 @@
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
+  ChannelInput,
   MonitoringRange,
   OriginHealth,
   ProxyHost,
@@ -27,6 +28,7 @@ import {
   maintenanceApi,
   backupsApi,
   monitoringApi,
+  notificationsApi,
   zonesApi,
 } from './endpoints';
 
@@ -49,6 +51,7 @@ export const queryKeys = {
   docker: ['docker'] as const,
   maintenancePage: ['maintenance', 'page'] as const,
   monitoring: ['monitoring'] as const,
+  notifications: ['notifications'] as const,
   monitoringHost: (id: number, range: MonitoringRange) => ['monitoring', id, range] as const,
 };
 
@@ -388,6 +391,41 @@ export function useBadge(id: number) {
       onSuccess: invalidate,
     }),
   };
+}
+
+/* ---------------------------- notifications --------------------------- */
+
+export function useNotificationChannels() {
+  return useQuery({
+    queryKey: queryKeys.notifications,
+    queryFn: notificationsApi.list,
+    select: (d) => d.channels,
+  });
+}
+
+export function useSaveChannel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: number | null; input: ChannelInput }) =>
+      id === null ? notificationsApi.create(input) : notificationsApi.update(id, input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.notifications }),
+  });
+}
+
+export function useDeleteChannel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: notificationsApi.remove,
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.notifications }),
+  });
+}
+
+export function useTestChannel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: notificationsApi.test,
+    onSettled: () => qc.invalidateQueries({ queryKey: queryKeys.notifications }),
+  });
 }
 
 /* ------------------------------ API tokens ---------------------------- */

@@ -21,6 +21,7 @@ import { HostService } from './services/hosts.js';
 import { LogBuffer } from './services/log-buffer.js';
 import { MaintenanceService } from './services/maintenance.js';
 import { MonitoringService } from './services/monitoring.js';
+import { NotificationService } from './services/notifications.js';
 import { Reconciler } from './services/reconciler.js';
 import type { SupervisorOptions } from './services/supervisor.js';
 import { SupervisorPool } from './services/supervisors.js';
@@ -55,6 +56,7 @@ export interface AppContext {
   docker: DockerDiscoveryService;
   maintenance: MaintenanceService;
   monitoring: MonitoringService;
+  notifications: NotificationService;
   lifecycle: Lifecycle;
 }
 
@@ -69,6 +71,8 @@ export interface ContextOverrides {
   dockerSelfHostname?: string;
   /** Failed probes in a row before a host counts as down. */
   failuresBeforeDown?: number;
+  /** Time a tunnel may stay disconnected before it is reported down. */
+  tunnelGraceMs?: number;
 }
 
 /** Version from package.json (works from both `src/` and `dist/`). */
@@ -209,6 +213,15 @@ export function createContext(
       intervalSeconds: config.healthcheckIntervalSeconds,
       failuresBeforeDown: overrides.failuresBeforeDown,
     }),
+    notifications: new NotificationService({
+      db,
+      box,
+      logger: logger.child({ component: 'notifications' }),
+      fetch: overrides.fetch,
+      tunnelGraceMs: overrides.tunnelGraceMs,
+      tunnelState: (id) => supervisors.status(id).state,
+      tunnelName: (id) => tunnels.find(id)?.name,
+    }),
   } as Omit<AppContext, 'lifecycle'> as AppContext;
   ctx.lifecycle = new Lifecycle(ctx);
   return ctx;
@@ -232,6 +245,12 @@ export class Lifecycle {
     ctx.tunnels.on('listChanged', () => {
       void ctx.supervisors.sync();
     });
+    // Notifications: tunnels, hosts, drift and backups.
+    ctx.supervisors.on('state', (id, status) => ctx.notifications.onTunnelState(id, status));
+    ctx.monitoring.on('down', (e) => void ctx.notifications.onHostDown(e));
+    ctx.monitoring.on('up', (e) => void ctx.notifications.onHostUp(e));
+    ctx.drift.on('detected', (report) => void ctx.notifications.onDrift(report));
+    ctx.backups.on('failed', (run) => void ctx.notifications.onBackupFailed(run));
   }
 
   /** Called once after the HTTP server listens. Never throws. */
@@ -275,6 +294,7 @@ export class Lifecycle {
   async stop(): Promise<void> {
     for (const t of this.timers) clearInterval(t);
     this.timers = [];
+    this.ctx.notifications.stop();
     await this.ctx.supervisors.stopAll();
     await this.ctx.maintenance.stop();
   }

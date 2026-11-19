@@ -37,6 +37,7 @@ import { ConfigCard } from '../components/settings/ConfigCard';
 import { DockerCard } from '../components/settings/DockerCard';
 import { DriftCard } from '../components/settings/DriftCard';
 import { MaintenanceCard } from '../components/settings/MaintenanceCard';
+import { NotificationsCard } from '../components/settings/NotificationsCard';
 
 export function SettingsPage() {
   return (
@@ -52,6 +53,7 @@ export function SettingsPage() {
         </Card>
         <DockerCard />
         <MaintenanceCard />
+        <NotificationsCard />
         <DriftCard />
         <ConfigCard />
         <BackupsCard />

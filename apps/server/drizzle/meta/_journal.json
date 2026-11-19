@@ -71,6 +71,13 @@
       "when": 1795067495522,
       "tag": "0009_monitoring",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1795067997570,
+      "tag": "0010_notifications",
+      "breakpoints": true
     }
   ]
 }

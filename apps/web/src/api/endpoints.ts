@@ -8,6 +8,10 @@ import {
   configImportReportSchema,
   backupRunSchema,
   badgeResponseSchema,
+  channelListSchema,
+  channelSchema,
+  channelTestResultSchema,
+  type ChannelInput,
   hostMonitorDetailSchema,
   monitoringOverviewSchema,
   type MonitoringRange,
@@ -168,6 +172,16 @@ export const monitoringApi = {
   enableBadge: (id: number) =>
     api.post(`/monitoring/hosts/${id}/badge`, undefined, badgeResponseSchema),
   disableBadge: (id: number) => api.delete(`/monitoring/hosts/${id}/badge`),
+};
+
+export const notificationsApi = {
+  list: () => api.get('/notifications', channelListSchema),
+  create: (input: ChannelInput) => api.post('/notifications/channels', input, channelSchema),
+  update: (id: number, input: ChannelInput) =>
+    api.put(`/notifications/channels/${id}`, input, channelSchema),
+  remove: (id: number) => api.delete(`/notifications/channels/${id}`),
+  test: (id: number) =>
+    api.post(`/notifications/channels/${id}/test`, undefined, channelTestResultSchema),
 };
 
 export const hostsApi = {

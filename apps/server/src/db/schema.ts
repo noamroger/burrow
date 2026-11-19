@@ -4,7 +4,7 @@
  *
  * Timestamps are ISO 8601 strings; booleans are stored as 0/1 integers.
  */
-import type { MaintenancePage } from '@burrow/shared';
+import type { MaintenancePage, NotificationEvent } from '@burrow/shared';
 import { sql } from 'drizzle-orm';
 import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
@@ -178,6 +178,22 @@ export const healthChecks = sqliteTable(
   (t) => [index('health_checks_host_time_idx').on(t.hostId, t.checkedAt)],
 );
 
+/** Where notifications go. The whole config is encrypted (it holds webhook URLs and tokens). */
+export const notificationChannels = sqliteTable('notification_channels', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  name: text('name').notNull(),
+  type: text('type', { enum: ['discord', 'ntfy', 'webhook'] }).notNull(),
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+  events: text('events', { mode: 'json' })
+    .$type<NotificationEvent[]>()
+    .notNull()
+    .default(sql`'[]'`),
+  configEnc: text('config_enc').notNull(),
+  lastSentAt: text('last_sent_at'),
+  lastError: text('last_error'),
+  createdAt: timestamp('created_at'),
+});
+
 /** Who changed what. Never contains secrets. */
 export const auditLog = sqliteTable('audit_log', {
   id: integer('id').primaryKey({ autoIncrement: true }),
@@ -195,3 +211,4 @@ export type TunnelRow = typeof tunnels.$inferSelect;
 export type ProxyHostRow = typeof proxyHosts.$inferSelect;
 export type NewProxyHostRow = typeof proxyHosts.$inferInsert;
 export type HealthCheckRow = typeof healthChecks.$inferSelect;
+export type NotificationChannelRow = typeof notificationChannels.$inferSelect;

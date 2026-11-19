@@ -490,6 +490,48 @@ const ops: Operation[] = [
     },
     public: true,
   },
+  /* ---- notifications ---- */
+  {
+    method: 'get',
+    path: '/api/notifications',
+    tag: 'Notifications',
+    summary: 'Notification channels (secrets are never returned)',
+    response: s.channelListSchema,
+  },
+  {
+    method: 'post',
+    path: '/api/notifications/channels',
+    tag: 'Notifications',
+    summary: 'Add a Discord, ntfy or webhook channel',
+    description:
+      'Generic webhooks receive `POST` requests with a JSON body (see WebhookPayload) and the `X-Burrow-Event` header; with a secret, `X-Burrow-Signature: sha256=<hex HMAC-SHA256 of the body>`.',
+    body: s.channelInputSchema,
+    response: s.channelSchema,
+    status: 201,
+  },
+  {
+    method: 'put',
+    path: '/api/notifications/channels/{id}',
+    tag: 'Notifications',
+    summary: 'Update a channel (omitted secrets are kept)',
+    body: s.channelInputSchema,
+    response: s.channelSchema,
+  },
+  {
+    method: 'delete',
+    path: '/api/notifications/channels/{id}',
+    tag: 'Notifications',
+    summary: 'Delete a channel',
+    response: null,
+    status: 204,
+  },
+  {
+    method: 'post',
+    path: '/api/notifications/channels/{id}/test',
+    tag: 'Notifications',
+    summary: 'Send a test message (200 even when delivery failed)',
+    response: s.channelTestResultSchema,
+  },
   /* ---- health ---- */
   {
     method: 'get',
