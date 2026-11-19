@@ -523,6 +523,79 @@ export const syncResultSchema = z.object({
 export type SyncResult = z.infer<typeof syncResultSchema>;
 
 /* ------------------------------------------------------------------ */
+/* Drift detection                                                     */
+/* ------------------------------------------------------------------ */
+
+export const DRIFT_KINDS = [
+  /** A route Burrow wrote was edited in the dashboard (service, options, path…). */
+  'ingress.changed',
+  /** A route Burrow publishes is gone. */
+  'ingress.missing',
+  /** A route Burrow wrote is still there although no host wants it. */
+  'ingress.extra',
+  /** The CNAME of a host is gone. */
+  'dns.missing',
+  /** Burrow's CNAME points elsewhere or lost its proxy. */
+  'dns.changed',
+  /** A record Burrow created is left over (duplicate or orphan). */
+  'dns.extra',
+  /** Someone replaced Burrow's record with their own. */
+  'dns.conflict',
+  'access.missing',
+  'access.changed',
+  'access.extra',
+  'access.conflict',
+  /** The tunnel itself was deleted. */
+  'tunnel.missing',
+] as const;
+export const driftKindSchema = z.enum(DRIFT_KINDS);
+export type DriftKind = z.infer<typeof driftKindSchema>;
+
+export const driftItemSchema = z.object({
+  kind: driftKindSchema,
+  /** Hostname (or tunnel name for tunnel-wide differences). */
+  target: z.string(),
+  /** Tunnel concerned, when relevant. */
+  tunnel: z.string().nullable(),
+  /** Hosts concerned. */
+  hostIds: z.array(z.number().int()),
+  /** What differs, in plain words. */
+  detail: z.string(),
+  /**
+   * True when Burrow can keep the Cloudflare version by updating the host
+   * (a changed route, or a removed route / record: the host is disabled).
+   * Other differences can only be reverted.
+   */
+  keepable: z.boolean(),
+});
+export type DriftItem = z.infer<typeof driftItemSchema>;
+
+/** GET /api/drift -> 200. POST /api/drift/check -> 200 (check now). */
+export const driftReportSchema = z.object({
+  checkedAt: z.string().nullable(),
+  /** When on, differences are reverted automatically at every check. */
+  autoRepair: z.boolean(),
+  /** Seconds between scheduled checks; 0 when they are off. */
+  intervalSeconds: z.number().int().nonnegative(),
+  items: z.array(driftItemSchema),
+  /** Set when the check itself failed (Cloudflare unreachable…). */
+  error: z.string().nullable(),
+});
+export type DriftReport = z.infer<typeof driftReportSchema>;
+
+/**
+ * POST /api/drift/resolve -> 200 DriftReport (after a new check).
+ * `revert`: make Cloudflare match Burrow again (a full sync).
+ * `keep`: update Burrow's hosts with the Cloudflare changes it can keep, then sync.
+ */
+export const resolveDriftSchema = z.object({ strategy: z.enum(['revert', 'keep']) });
+export type ResolveDriftInput = z.infer<typeof resolveDriftSchema>;
+
+/** PUT /api/drift/settings -> 200 DriftReport */
+export const driftSettingsSchema = z.object({ autoRepair: z.boolean() });
+export type DriftSettings = z.infer<typeof driftSettingsSchema>;
+
+/* ------------------------------------------------------------------ */
 /* API tokens                                                          */
 /* ------------------------------------------------------------------ */
 

@@ -14,6 +14,8 @@ export const SettingKeys = {
    * keys are migrated there by 0002_tunnels.sql).
    */
   tunnelName: 'tunnel.name',
+  /** Revert drift automatically at every check instead of only alerting. */
+  driftAutoRepair: 'drift.auto_repair',
   /** Hostnames this Burrow instance created a Cloudflare Access application for. */
   managedAccess: 'access.managed_hostnames',
 } as const;

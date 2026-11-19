@@ -5,7 +5,7 @@ import type { Logger } from 'pino';
 import { CloudflareApiError, type CloudflareClient } from '../cloudflare/client.js';
 import type { CfIngressRule, CfTunnelConfiguration } from '../cloudflare/types.js';
 import type { Db } from '../db/client.js';
-import { proxyHosts, zones, type ProxyHostRow } from '../db/schema.js';
+import { proxyHosts, zones, type ProxyHostRow, type TunnelRow } from '../db/schema.js';
 import { SettingKeys, type SettingsRepository } from '../db/settings.js';
 import { AppError, errorMessage } from '../lib/errors.js';
 import { Mutex } from '../lib/mutex.js';
@@ -19,7 +19,7 @@ import {
 } from './access-plan.js';
 import { PERMISSION_NAMES, type CloudflareService } from './cloudflare.js';
 import { keyOfRule } from './ingress.js';
-import { plan, type ActualState, type PlanHost, type ZonedDnsRecord } from './plan.js';
+import { plan, type ActualState, type Plan, type PlanHost, type ZonedDnsRecord } from './plan.js';
 import type { EnsuredTunnel, TunnelService } from './tunnel.js';
 
 /** A hostname to look at in a targeted sync. */
@@ -100,6 +100,25 @@ async function ignoreNotFound<T>(p: Promise<T>): Promise<void> {
   }
 }
 
+/** What Cloudflare looks like compared to Burrow, without changing anything. */
+export interface Inspection {
+  tunnels: Array<{
+    row: TunnelRow;
+    /** Live ingress of the tunnel. */
+    ingress: CfIngressRule[];
+    /** What a sync would do on this tunnel. */
+    plan: Plan;
+  }>;
+  /** DNS records loaded for the comparison. */
+  dnsRecords: ZonedDnsRecord[];
+  /** Tunnels deleted on Cloudflare. */
+  missing: TunnelRow[];
+  /** Access creates, updates, deletions and conflicts a sync would perform. */
+  access: AccessAction[];
+  /** Parts that could not be checked. */
+  failures: string[];
+}
+
 /** Everything needed to plan and apply one tunnel. */
 interface TunnelContext {
   ensured: EnsuredTunnel;
@@ -166,6 +185,75 @@ export class Reconciler extends EventEmitter<{ synced: [SyncResult] }> {
       );
     }
     return this.mutex.run(() => this.execute(options.scope));
+  }
+
+  /**
+   * Compare Cloudflare with Burrow without writing anything (drift
+   * detection). Deleted tunnels are reported, not recreated.
+   */
+  inspect(): Promise<Inspection> {
+    if (!this.opts.cloudflare.isConfigured()) {
+      return Promise.reject(
+        new AppError('CLOUDFLARE_NOT_CONFIGURED', 'Cloudflare is not configured yet.', 400),
+      );
+    }
+    return this.mutex.run(async () => {
+      const { client, accountId } = this.opts.cloudflare.getContext();
+      const { ok, missing, failed } = await this.opts.tunnels.inspectAll();
+      const failures = failed.map((f) => `${f.row.name}: ${f.error.message}`);
+      const rows = this.opts.db.select().from(proxyHosts).all();
+      const defaultId = this.opts.tunnels.getDefault()?.id ?? null;
+      const tunnelOf = (row: ProxyHostRow) => row.tunnelId ?? defaultId;
+      const { records, unavailable } = await this.loadDns(client, rows, undefined);
+      for (const [, reason] of unavailable) failures.push(reason);
+
+      const tunnels: Inspection['tunnels'] = [];
+      for (const t of ok) {
+        try {
+          const configuration = await client.getTunnelConfiguration(accountId, t.tunnel.id);
+          const ingress = configuration.config?.ingress ?? [];
+          const own = rows.filter((r) => tunnelOf(r) === t.row.id);
+          const p = plan(own.map(toPlanHost), {
+            tunnelId: t.tunnel.id,
+            ingress,
+            managedKeys: t.row.managedIngress,
+            dnsRecords: records,
+            unavailableZones: unavailable,
+            otherHostnames: new Set(
+              rows
+                .filter((r) => tunnelOf(r) !== t.row.id && r.enabled)
+                .map((r) => r.hostname.toLowerCase()),
+            ),
+          });
+          tunnels.push({ row: t.row, ingress, plan: p });
+        } catch (err) {
+          failures.push(`${t.row.name}: ${errorMessage(err)}`);
+        }
+      }
+
+      // Access, read-only: only when Burrow protects or manages something.
+      let access: AccessAction[] = [];
+      const managed = new Set(this.opts.settings.get<string[]>(SettingKeys.managedAccess) ?? []);
+      const wanted = desiredAccess(rows.map(toAccessHost));
+      for (const t of tunnels) {
+        for (const a of t.plan.actions) {
+          if (a.kind === 'host.conflict') wanted.delete(a.hostname.toLowerCase());
+        }
+      }
+      if (wanted.size > 0 || managed.size > 0) {
+        try {
+          const [apps, policies] = await Promise.all([
+            client.listAccessApps(accountId),
+            client.listAccessPolicies(accountId),
+          ]);
+          const ap = planAccess(wanted, { apps, policies }, { managed });
+          access = [...ap.ensure, ...ap.remove];
+        } catch (err) {
+          failures.push(`Cloudflare Access: ${toAccessError(err).message}`);
+        }
+      }
+      return { tunnels, dnsRecords: records, missing, access, failures };
+    });
   }
 
   private async execute(initialScope: SyncScopeItem[] | undefined): Promise<SyncOutcome> {

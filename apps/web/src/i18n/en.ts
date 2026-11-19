@@ -262,7 +262,7 @@ export const en = {
   'sync.pending': 'Pending',
   'sync.pendingHint': 'Burrow is applying this host on Cloudflare.',
   'sync.drift': 'Drift',
-  'sync.driftHint': 'Cloudflare differs from Burrow. Run "Sync now" to fix it.',
+  'sync.driftHint': 'Someone changed this host in the Cloudflare dashboard. See the alert above.',
   'sync.error': 'Error',
   'sync.errorHint': 'The last sync failed.',
   'sync.lastSynced': 'Last synced {time}',
@@ -429,6 +429,50 @@ export const en = {
   'tunnels.deleted': '{name} was deleted.',
   'host.tunnel': 'Tunnel',
   'host.tunnelHint': 'The tunnel that carries the traffic of this host.',
+
+  /* Drift detection */
+  'drift.title': 'Cloudflare was changed outside Burrow',
+  'drift.body':
+    '{count} difference(s) between Cloudflare and Burrow, probably edited in the Cloudflare dashboard. Nothing was changed yet.',
+  'drift.more': '…and {count} more',
+  'drift.keepable': 'can be kept',
+  'drift.notKeepable': 'will be reverted',
+  'drift.revert': "Revert to Burrow's configuration",
+  'drift.keep': "Keep Cloudflare's changes",
+  'drift.checkAgain': 'Check again',
+  'drift.reverted': "Cloudflare matches Burrow's configuration again.",
+  'drift.kept': "Cloudflare's changes were kept where possible.",
+  'drift.clean': 'No difference: Cloudflare matches Burrow.',
+  'drift.keepTitle': "Keep Cloudflare's changes?",
+  'drift.keepBody':
+    'Changed routes are copied into their hosts. Hosts whose route or DNS record was removed are disabled. Differences marked "will be reverted" cannot be kept: Burrow reverts them.',
+  'drift.revertTitle': "Revert to Burrow's configuration?",
+  'drift.revertBody':
+    'Burrow rewrites the routes, DNS records and Access applications it manages, as they are in Burrow. Changes made in the dashboard to them are lost.',
+  'drift.settingsTitle': 'Drift detection',
+  'drift.settingsHint':
+    'Every {minutes} min, Burrow compares Cloudflare with its configuration and alerts you when routes, DNS records or Access applications it manages were changed elsewhere.',
+  'drift.settingsHintManual':
+    'Scheduled checks are off (RECONCILE_INTERVAL_SECONDS=0). Burrow still checks at startup and when you ask.',
+  'drift.autoRepair': 'Repair automatically',
+  'drift.autoRepairHint':
+    'Revert differences as soon as they are found, without asking. Off by default.',
+  'drift.lastCheck': 'Last check {when}',
+  'drift.neverChecked': 'Not checked yet',
+  'drift.checkNow': 'Check now',
+  'drift.checkFailed': 'Could not check everything: {error}',
+  'drift.kind.ingress.changed': 'Route changed',
+  'drift.kind.ingress.missing': 'Route removed',
+  'drift.kind.ingress.extra': 'Leftover route',
+  'drift.kind.dns.missing': 'DNS record removed',
+  'drift.kind.dns.changed': 'DNS record changed',
+  'drift.kind.dns.extra': 'Leftover DNS record',
+  'drift.kind.dns.conflict': 'DNS record replaced',
+  'drift.kind.access.missing': 'Access app removed',
+  'drift.kind.access.changed': 'Access app changed',
+  'drift.kind.access.extra': 'Leftover Access app',
+  'drift.kind.access.conflict': 'Access conflict',
+  'drift.kind.tunnel.missing': 'Tunnel deleted',
 
   /* API tokens */
   'apiTokens.title': 'API tokens',

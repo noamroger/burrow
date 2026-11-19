@@ -220,6 +220,39 @@ export class TunnelService extends EventEmitter<{ changed: [TunnelRow]; listChan
     return { ok, failed };
   }
 
+  /**
+   * Read-only check of every tunnel (drift detection): nothing is created or
+   * recreated. Deleted tunnels are returned in `missing`.
+   */
+  async inspectAll(): Promise<{
+    ok: EnsuredTunnel[];
+    missing: TunnelRow[];
+    failed: TunnelFailure[];
+  }> {
+    const { client, accountId } = this.opts.cloudflare.getContext();
+    const ok: EnsuredTunnel[] = [];
+    const missing: TunnelRow[] = [];
+    const failed: TunnelFailure[] = [];
+    for (const row of this.list()) {
+      try {
+        const tunnel = await client.getTunnel(accountId, row.cfId);
+        if (tunnel.deleted_at) missing.push(row);
+        else ok.push({ row, tunnel, changed: false });
+      } catch (err) {
+        if (err instanceof CloudflareApiError && err.isNotFound) missing.push(row);
+        else
+          failed.push({
+            row,
+            error:
+              err instanceof AppError
+                ? err
+                : new AppError('CLOUDFLARE_API_ERROR', errorMessage(err), 502),
+          });
+      }
+    }
+    return { ok, missing, failed };
+  }
+
   /** The run token for cloudflared. Never stored. */
   async getRunToken(id: number): Promise<string> {
     const row = this.get(id);

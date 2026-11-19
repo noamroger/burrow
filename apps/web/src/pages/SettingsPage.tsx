@@ -33,6 +33,7 @@ import { fieldErrors } from '../lib/zod';
 import { PasswordStrength } from '../components/PasswordStrength';
 import { ApiTokensCard } from '../components/settings/ApiTokensCard';
 import { ConfigCard } from '../components/settings/ConfigCard';
+import { DriftCard } from '../components/settings/DriftCard';
 
 export function SettingsPage() {
   return (
@@ -46,6 +47,7 @@ export function SettingsPage() {
             <ZoneList />
           </CardBody>
         </Card>
+        <DriftCard />
         <ConfigCard />
         <ApiTokensCard />
         <div className="grid gap-6 lg:grid-cols-2">

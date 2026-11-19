@@ -16,6 +16,7 @@ import { AppError } from './lib/errors.js';
 import { authRoutes } from './routes/auth.js';
 import { cloudflareRoutes } from './routes/cloudflare.js';
 import { configRoutes } from './routes/config.js';
+import { driftRoutes } from './routes/drift.js';
 import { healthRoutes } from './routes/health.js';
 import { hostRoutes } from './routes/hosts.js';
 import { logRoutes } from './routes/logs.js';
@@ -146,6 +147,7 @@ export async function buildApp(
     await tunnelRoutes(scope, ctx);
     await logRoutes(scope, ctx);
     await configRoutes(scope, ctx);
+    await driftRoutes(scope, ctx);
     await tokenRoutes(scope, ctx);
   });
 

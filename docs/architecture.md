@@ -129,8 +129,10 @@ UI                 API (HostService)                 Cloudflare
 ## 6. Reconciliation (idempotence)
 
 Cloudflare is the source of truth for what exists there; SQLite is the source
-of truth for what the user _wants_. The `Reconciler` runs at startup, every
-5 minutes, and on demand (`POST /api/sync`).
+of truth for what the user _wants_. The `Reconciler` runs at startup, after
+each change made in Burrow, and on demand (`POST /api/sync`). Every
+`RECONCILE_INTERVAL_SECONDS` (5 minutes by default) a drift check runs instead
+(§6.2): it only writes when automatic repair is on.
 
 For every enabled host it computes the desired ingress rule and CNAME, compares
 them with the live config and DNS records, and:
@@ -176,6 +178,29 @@ two Burrow instances on one account do not delete each other's apps. If the
 Access API cannot be listed, hosts already protected stay published as they
 are, and hosts never protected are not published. When a host update fails
 in the Access step, `HostService` reverts the change, like a DNS conflict.
+
+### 6.2 Drift detection
+
+Someone may edit, in the Cloudflare dashboard, a route, a CNAME or an Access
+application that Burrow manages. `Reconciler.inspect()` runs the same reads and
+the same pure planners as a sync but executes nothing; `findDrift()` turns the
+planned actions into a list of differences (`ingress.changed`,
+`dns.missing`, `access.extra`…), each tied to its hosts.
+
+`DriftService` keeps the last report (`GET /api/drift`), marks the affected
+hosts `drift`, and emits `detected` when the list changes (the hook for
+notifications). The UI shows an alert on the hosts page with two choices:
+
+| Choice     | Effect                                                                                                                                                                                                                                                                     |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Revert** | A full sync: Cloudflare matches Burrow again.                                                                                                                                                                                                                              |
+| **Keep**   | Cloudflare wins where it can: a changed route is copied into the host (service, path, origin options), a host whose route or CNAME was removed or replaced is disabled. The rest (e.g. a removed Access app) is reverted, because Burrow never lowers protection silently. |
+
+With **Repair automatically** (Settings, off by default) every scheduled check
+reverts differences right away, as v0.1 did.
+
+Limit: any change saved in Burrow rewrites a tunnel's whole ingress, so it also
+reverts pending route differences of that tunnel. Resolve the alert first.
 
 ## 7. cloudflared supervision
 
@@ -256,6 +281,8 @@ stopped ──start()──▶ starting ──first "Registered tunnel connectio
   [docs/api.md](api.md)). Personal API tokens (`api_tokens` table, SHA-256
   only) authenticate scripts without the CSRF header.
 - **Config export/import**: done (`ConfigService`, [docs/api.md](api.md)).
+- **Drift detection**: done (§6.2). `DriftService` emits `detected` for the
+  notification channels.
 - **Notifications**: an internal event bus already emits `host.synced`,
   `host.error`, `tunnel.down`; channels subscribe to it.
 - **i18n**: all UI strings go through a single `t()` helper from day one

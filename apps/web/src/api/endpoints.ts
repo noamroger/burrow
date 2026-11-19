@@ -6,6 +6,7 @@ import {
   apiTokenListSchema,
   availableTunnelListSchema,
   configImportReportSchema,
+  driftReportSchema,
   createdApiTokenSchema,
   cloudflareSettingsSchema,
   importTunnelResultSchema,
@@ -118,6 +119,14 @@ export const configApi = {
 };
 
 export const docsUrl = '/api/docs/';
+
+export const driftApi = {
+  get: () => api.get('/drift', driftReportSchema),
+  check: () => api.post('/drift/check', undefined, driftReportSchema),
+  resolve: (strategy: 'revert' | 'keep') =>
+    api.post('/drift/resolve', { strategy }, driftReportSchema),
+  settings: (autoRepair: boolean) => api.put('/drift/settings', { autoRepair }, driftReportSchema),
+};
 
 export const hostsApi = {
   list: () => api.get('/hosts', proxyHostListSchema),

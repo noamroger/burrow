@@ -21,6 +21,7 @@ import {
   tunnelsApi,
   tokensApi,
   configApi,
+  driftApi,
   zonesApi,
 } from './endpoints';
 
@@ -38,6 +39,7 @@ export const queryKeys = {
   logs: ['logs'] as const,
   health: ['health'] as const,
   tokens: ['tokens'] as const,
+  drift: ['drift'] as const,
 };
 
 /** Polling intervals (ms). */
@@ -233,6 +235,42 @@ export function useTunnelControl() {
       void qc.invalidateQueries({ queryKey: queryKeys.tunnels });
       void qc.invalidateQueries({ queryKey: queryKeys.tunnel });
     },
+  });
+}
+
+/* ------------------------------- drift -------------------------------- */
+
+export function useDrift() {
+  return useQuery({ queryKey: queryKeys.drift, queryFn: driftApi.get, refetchInterval: 60_000 });
+}
+
+export function useCheckDrift() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: driftApi.check,
+    onSuccess: (report) => {
+      qc.setQueryData(queryKeys.drift, report);
+      void qc.invalidateQueries({ queryKey: queryKeys.hosts });
+    },
+  });
+}
+
+export function useResolveDrift() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: driftApi.resolve,
+    onSuccess: (report) => {
+      qc.setQueryData(queryKeys.drift, report);
+      invalidateTunnels(qc);
+    },
+  });
+}
+
+export function useDriftSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: driftApi.settings,
+    onSuccess: (report) => qc.setQueryData(queryKeys.drift, report),
   });
 }
 

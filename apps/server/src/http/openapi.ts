@@ -308,6 +308,37 @@ const ops: Operation[] = [
     description:
       '`event: log` with a LogLine, `event: state` with a supervisor status and its `tunnelId`. Resume with `Last-Event-ID`.',
   },
+  /* ---- drift ---- */
+  {
+    method: 'get',
+    path: '/api/drift',
+    tag: 'Drift',
+    summary: 'Last comparison between Cloudflare and Burrow',
+    response: s.driftReportSchema,
+  },
+  {
+    method: 'post',
+    path: '/api/drift/check',
+    tag: 'Drift',
+    summary: 'Compare Cloudflare with Burrow now (writes nothing)',
+    response: s.driftReportSchema,
+  },
+  {
+    method: 'post',
+    path: '/api/drift/resolve',
+    tag: 'Drift',
+    summary: 'Revert the differences, or keep the Cloudflare version where possible',
+    body: s.resolveDriftSchema,
+    response: s.driftReportSchema,
+  },
+  {
+    method: 'put',
+    path: '/api/drift/settings',
+    tag: 'Drift',
+    summary: 'Turn automatic repair on or off',
+    body: s.driftSettingsSchema,
+    response: s.driftReportSchema,
+  },
   /* ---- config ---- */
   {
     method: 'get',

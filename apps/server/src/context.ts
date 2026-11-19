@@ -12,6 +12,7 @@ import { AuditService } from './services/audit.js';
 import { AuthService } from './services/auth.js';
 import { CloudflareService } from './services/cloudflare.js';
 import { ConfigService } from './services/config-io.js';
+import { DriftService } from './services/drift.js';
 import { HealthService } from './services/health.js';
 import { HostService } from './services/hosts.js';
 import { LogBuffer } from './services/log-buffer.js';
@@ -44,6 +45,7 @@ export interface AppContext {
   zones: ZoneService;
   /** Configuration export / import . */
   configIo: ConfigService;
+  drift: DriftService;
   lifecycle: Lifecycle;
 }
 
@@ -144,6 +146,13 @@ export function createContext(
     hosts,
     zones,
     configIo,
+    drift: new DriftService({
+      db,
+      settings,
+      reconciler,
+      logger: logger.child({ component: 'drift' }),
+      intervalSeconds: config.reconcileIntervalSeconds,
+    }),
   } as Omit<AppContext, 'lifecycle'> as AppContext;
   ctx.lifecycle = new Lifecycle(ctx);
   return ctx;
@@ -187,7 +196,7 @@ export class Lifecycle {
     }
 
     if (ctx.config.reconcileIntervalSeconds > 0) {
-      this.every(ctx.config.reconcileIntervalSeconds, () => this.reconcile('periodic'));
+      this.every(ctx.config.reconcileIntervalSeconds, () => this.checkDrift());
     }
     if (ctx.config.healthcheckIntervalSeconds > 0) {
       this.every(ctx.config.healthcheckIntervalSeconds, () => ctx.hosts.checkAll());
@@ -210,7 +219,7 @@ export class Lifecycle {
       this.ctx.logger.warn({ err: errorMessage(err) }, 'could not check the default tunnel');
     }
     await this.ctx.supervisors.enable();
-    await this.reconcile('startup');
+    await this.checkDrift();
   }
 
   /**
@@ -230,6 +239,17 @@ export class Lifecycle {
   /** After the token was removed: stop cloudflared, nothing else to run. */
   async onCloudflareRemoved(): Promise<void> {
     await this.ctx.supervisors.disable();
+  }
+
+  /**
+   * Scheduled check: compare Cloudflare with Burrow and alert on drift, or
+   * repair it right away when auto-repair is on. Never throws.
+   */
+  async checkDrift(): Promise<void> {
+    if (!this.ctx.cloudflare.isConfigured()) return;
+    await this.ctx.drift.scheduled().catch((err: unknown) => {
+      this.ctx.logger.warn({ err: errorMessage(err) }, 'drift check failed');
+    });
   }
 
   /** Full reconciliation that only logs failures. */

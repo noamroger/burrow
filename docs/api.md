@@ -59,6 +59,14 @@ jq '{config: ., mode: "merge", dryRun: true}' burrow-config.json \
       -d @- $BURROW/api/config/import
 ```
 
+Check for changes made in the Cloudflare dashboard, then revert them:
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $TOKEN" $BURROW/api/drift/check | jq '.items'
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"strategy":"revert"}' $BURROW/api/drift/resolve
+```
+
 ## Configuration file
 
 `GET /api/config/export` returns:
