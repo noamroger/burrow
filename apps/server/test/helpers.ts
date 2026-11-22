@@ -33,6 +33,7 @@ export async function createTestApp(
     docker?: DockerApi;
     dockerSelfHostname?: string;
     iconBaseUrl?: string;
+    trustProxy?: string;
   } = {},
 ): Promise<TestApp> {
   const mock = new MockCloudflare();
@@ -49,6 +50,7 @@ export async function createTestApp(
     CLOUDFLARED_METRICS: '127.0.0.1:0',
     MAINTENANCE_PORT: '0',
     MAINTENANCE_ORIGIN: 'http://127.0.0.1:8081',
+    ...(opts.trustProxy !== undefined ? { TRUST_PROXY: opts.trustProxy } : {}),
   });
   const ctx = createContext(config, pino({ level: 'silent' }), {
     cloudflareRetryBaseMs: 1,

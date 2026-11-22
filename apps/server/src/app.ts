@@ -5,7 +5,12 @@ import rateLimit from '@fastify/rate-limit';
 import fastifyStatic from '@fastify/static';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
-import Fastify, { LogController, type FastifyBaseLogger, type FastifyInstance } from 'fastify';
+import Fastify, {
+  LogController,
+  type FastifyBaseLogger,
+  type FastifyInstance,
+  type FastifyRequest,
+} from 'fastify';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AppContext } from './context.js';
@@ -50,15 +55,45 @@ const HOMEPAGE_HOST_PATHS = [
   /^\/api\/badge\/[\w-]+(\.svg)?$/,
 ];
 
+/** `Example.com:8080` → `example.com`, `[::1]:8080` → `[::1]`. */
+function stripPort(value: string): string {
+  const v = value.trim().toLowerCase();
+  if (v.startsWith('[')) return v.slice(0, v.indexOf(']') + 1) || v;
+  return v.replace(/:\d*$/, '');
+}
+
+/**
+ * Every host name a request claims: the `Host` header, each `X-Forwarded-Host`
+ * entry and Fastify's own `hostname` (which follows `X-Forwarded-Host` when
+ * `TRUST_PROXY` trusts the peer).
+ */
+function claimedHostnames(req: FastifyRequest): Set<string> {
+  const names = new Set<string>([stripPort(req.hostname)]);
+  const forwarded = req.headers['x-forwarded-host'];
+  for (const header of [
+    req.headers.host,
+    ...(Array.isArray(forwarded) ? forwarded : [forwarded]),
+  ]) {
+    for (const entry of (header ?? '').split(',')) {
+      if (entry.trim()) names.add(stripPort(entry));
+    }
+  }
+  return names;
+}
+
 /**
  * Requests for the homepage's public hostname (Settings › Homepage) only
  * reach the homepage: the admin UI and the rest of the API answer 404 there,
  * whatever the session.
+ *
+ * The check runs on every host name the request carries, not only the one
+ * Fastify picks: with `TRUST_PROXY` on, a visitor of the public hostname could
+ * otherwise send another `X-Forwarded-Host` and reach the admin UI.
  */
 function restrictHomepageHostname(app: FastifyInstance, ctx: AppContext): void {
   app.addHook('onRequest', async (req, reply) => {
     const hostname = ctx.homepage.publicHostname();
-    if (!hostname || req.hostname.toLowerCase() !== hostname) return;
+    if (!hostname || !claimedHostnames(req).has(hostname)) return;
     const path = req.url.split('?')[0]!;
     if (req.method === 'GET' || req.method === 'HEAD') {
       if (path === '/') return reply.redirect('/home', 302);

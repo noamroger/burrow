@@ -225,4 +225,36 @@ describe('homepage', () => {
     await call('PUT', '/api/homepage/settings', { enabled: false });
     expect((await at('/api/setup/status')).statusCode).toBe(200);
   });
+
+  it('keeps the public hostname restricted whatever X-Forwarded-Host says', async () => {
+    // Behind TRUST_PROXY, Fastify takes the hostname from X-Forwarded-Host.
+    await t.close();
+    t = await createTestApp({ iconBaseUrl: iconBase(), trustProxy: 'true' });
+    call = apiFor(t, await setupConfigured(t));
+    await call('PUT', '/api/homepage/settings', {
+      enabled: true,
+      visibility: 'public',
+      publicHostname: 'home.example.com',
+    });
+    const at = (url: string, headers: Record<string, string>) =>
+      t.app.inject({ method: 'GET', url, headers });
+
+    for (const headers of [
+      { host: 'home.example.com', 'x-forwarded-host': 'admin.lan' },
+      { host: 'home.example.com:443', 'x-forwarded-host': 'admin.lan, other.lan' },
+      { host: 'admin.lan', 'x-forwarded-host': 'Home.Example.com' },
+      { host: 'admin.lan', 'x-forwarded-host': 'home.example.com:443, admin.lan' },
+    ]) {
+      expect((await at('/api/setup/status', headers)).statusCode, JSON.stringify(headers)).toBe(
+        404,
+      );
+      expect((await at('/api/home', headers)).statusCode, JSON.stringify(headers)).toBe(200);
+    }
+    // Another hostname, with or without a forwarded one, still reaches the admin UI.
+    expect((await at('/api/setup/status', { host: 'admin.lan' })).statusCode).toBe(200);
+    expect(
+      (await at('/api/setup/status', { host: 'admin.lan', 'x-forwarded-host': 'burrow.lan' }))
+        .statusCode,
+    ).toBe(200);
+  });
 });
