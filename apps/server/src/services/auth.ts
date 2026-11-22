@@ -12,6 +12,14 @@ export const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 /** Sliding expiry: extend the session when less than this remains. */
 const RENEW_WHEN_REMAINING_MS = 6 * 24 * 60 * 60 * 1000;
 
+/**
+ * Wrong passwords allowed per account in {@link ACCOUNT_FAILURE_WINDOW_MS},
+ * whatever the IP. The per-IP limit of the routes relies on the client IP,
+ * which a misconfigured `TRUST_PROXY` lets the client choose.
+ */
+export const ACCOUNT_MAX_FAILURES = 10;
+export const ACCOUNT_FAILURE_WINDOW_MS = 15 * 60 * 1000;
+
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 const randomToken = () => randomBytes(32).toString('base64url');
 
@@ -47,6 +55,8 @@ export interface AuthenticatedSession {
  */
 export class AuthService {
   private dummyHash: Promise<string> | null = null;
+  /** Times of the recent wrong passwords, per user id (in memory). */
+  private readonly failures = new Map<number, number[]>();
 
   constructor(private readonly db: Db) {}
 
@@ -76,8 +86,24 @@ export class AuthService {
       await verify(await this.dummyHash, password).catch(() => false);
       throw new AppError('UNAUTHORIZED', 'Invalid email or password.', 401);
     }
+    const now = Date.now();
+    const recent = (this.failures.get(user.id) ?? []).filter(
+      (at) => now - at < ACCOUNT_FAILURE_WINDOW_MS,
+    );
+    if (recent.length >= ACCOUNT_MAX_FAILURES) {
+      const minutes = Math.ceil((recent[0]! + ACCOUNT_FAILURE_WINDOW_MS - now) / 60_000);
+      throw new AppError(
+        'RATE_LIMITED',
+        `Too many wrong passwords for this account. Try again in ${minutes} minute${minutes > 1 ? 's' : ''}.`,
+        429,
+      );
+    }
     const ok = await verify(user.passwordHash, password).catch(() => false);
-    if (!ok) throw new AppError('UNAUTHORIZED', 'Invalid email or password.', 401);
+    if (!ok) {
+      this.failures.set(user.id, [...recent, Date.now()]);
+      throw new AppError('UNAUTHORIZED', 'Invalid email or password.', 401);
+    }
+    this.failures.delete(user.id);
     return user;
   }
 
