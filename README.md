@@ -100,7 +100,7 @@ When you remove the service, Burrow removes the route and the DNS record.
 - **Locked out?** `docker exec -it burrow burrow-reset-password` sets a new
   password, and can turn off two-step verification for a lost phone.
 - **Secure by default**: argon2id passwords, encrypted API token, CSRF
-  protection, login rate limiting, non-root container.
+  protection, login rate limiting (per IP and per account), non-root container.
 
 ## Screenshots
 
@@ -510,24 +510,24 @@ are listed but not undoable. The log is also available from the API:
 Everything is configured from the UI. These environment variables are all
 optional:
 
-| Variable                       | Default                       | Description                                                                                                                                                               |
-| ------------------------------ | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PORT`                         | `8080`                        | Port of the web UI                                                                                                                                                        |
-| `BURROW_SECRET`                | _(generated)_                 | Key used to encrypt the API token (32+ characters). If not set, a random key is created in `/data/.secret`. Set it if you want to back up `/data` without the key inside. |
-| `TZ`                           | `UTC`                         | Time zone used in logs                                                                                                                                                    |
-| `LOG_LEVEL`                    | `info`                        | `debug`, `info`, `warn` or `error`                                                                                                                                        |
-| `TRUST_PROXY`                  | `false`                       | Set to `true` if you put the UI behind another reverse proxy                                                                                                              |
-| `BURROW_SECURE_COOKIES`        | `auto`                        | `true` forces `Secure` cookies (UI served over HTTPS)                                                                                                                     |
-| `BACKUP_DIR`                   | `/data/backups`               | Where scheduled backups go when the destination is "Folder on the server"                                                                                                 |
-| `RECONCILE_INTERVAL_SECONDS`   | `300`                         | How often Burrow checks for changes made in the Cloudflare dashboard (`0`: only at startup and on demand)                                                                 |
-| `DOCKER_HOST`                  | `unix:///var/run/docker.sock` | Docker API used by auto-discovery (a socket path or `tcp://host:2375`)                                                                                                    |
-| `DOCKER_SCAN_INTERVAL_SECONDS` | `30`                          | How often Docker discovery scans the containers                                                                                                                           |
-| `MAINTENANCE_PORT`             | `8081`                        | Port of the maintenance page server (`0` turns it off)                                                                                                                    |
-| `MAINTENANCE_LISTEN`           | `127.0.0.1`                   | Address it listens on. Use `0.0.0.0` only if a tunnel connector runs on another machine.                                                                                  |
-| `MAINTENANCE_ORIGIN`           | `http://127.0.0.1:8081`       | URL cloudflared uses to reach it                                                                                                                                          |
-| `HEALTHCHECK_INTERVAL_SECONDS` | `60`                          | How often each host is checked (`0` turns the checks and the uptime history off)                                                                                          |
-| `MONITORING_RETENTION_DAYS`    | `30`                          | How long check results are kept (1 to 365 days)                                                                                                                           |
-| `PUID` / `PGID`                | `1000`                        | User and group ids Burrow runs as. On start, Burrow makes `/data` belong to them (you never need to `chown` it).                                                          |
+| Variable                       | Default                       | Description                                                                                                                                                                               |
+| ------------------------------ | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PORT`                         | `8080`                        | Port of the web UI                                                                                                                                                                        |
+| `BURROW_SECRET`                | _(generated)_                 | Key used to encrypt the API token (32+ characters). If not set, a random key is created in `/data/.secret`. Set it if you want to back up `/data` without the key inside.                 |
+| `TZ`                           | `UTC`                         | Time zone used in logs                                                                                                                                                                    |
+| `LOG_LEVEL`                    | `info`                        | `debug`, `info`, `warn` or `error`                                                                                                                                                        |
+| `TRUST_PROXY`                  | `false`                       | Behind another reverse proxy, the number of proxies in front of Burrow (usually `1`) or their addresses (`10.0.0.2`, `172.16.0.0/12`). Avoid `true`: it lets clients choose their own IP. |
+| `BURROW_SECURE_COOKIES`        | `auto`                        | `true` forces `Secure` cookies (UI served over HTTPS)                                                                                                                                     |
+| `BACKUP_DIR`                   | `/data/backups`               | Where scheduled backups go when the destination is "Folder on the server"                                                                                                                 |
+| `RECONCILE_INTERVAL_SECONDS`   | `300`                         | How often Burrow checks for changes made in the Cloudflare dashboard (`0`: only at startup and on demand)                                                                                 |
+| `DOCKER_HOST`                  | `unix:///var/run/docker.sock` | Docker API used by auto-discovery (a socket path or `tcp://host:2375`)                                                                                                                    |
+| `DOCKER_SCAN_INTERVAL_SECONDS` | `30`                          | How often Docker discovery scans the containers                                                                                                                                           |
+| `MAINTENANCE_PORT`             | `8081`                        | Port of the maintenance page server (`0` turns it off)                                                                                                                                    |
+| `MAINTENANCE_LISTEN`           | `127.0.0.1`                   | Address it listens on. Use `0.0.0.0` only if a tunnel connector runs on another machine.                                                                                                  |
+| `MAINTENANCE_ORIGIN`           | `http://127.0.0.1:8081`       | URL cloudflared uses to reach it                                                                                                                                                          |
+| `HEALTHCHECK_INTERVAL_SECONDS` | `60`                          | How often each host is checked (`0` turns the checks and the uptime history off)                                                                                                          |
+| `MONITORING_RETENTION_DAYS`    | `30`                          | How long check results are kept (1 to 365 days)                                                                                                                                           |
+| `PUID` / `PGID`                | `1000`                        | User and group ids Burrow runs as. On start, Burrow makes `/data` belong to them (you never need to `chown` it).                                                                          |
 
 All data lives in `/data` (SQLite database and secret key). Back up this
 folder, or turn on scheduled backups in **Settings › Backups**: Burrow then

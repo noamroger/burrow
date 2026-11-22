@@ -48,6 +48,13 @@ async function main(): Promise<void> {
     { version: ctx.version, port: config.port, dataDir: config.dataDir },
     'Burrow is listening',
   );
+  if (config.trustProxy === true) {
+    logger.warn(
+      'TRUST_PROXY=true trusts every X-Forwarded-For entry, so clients can choose their IP ' +
+        '(login rate limit, audit log). Set it to the number of proxies in front of Burrow ' +
+        '(usually 1) or to their addresses instead.',
+    );
+  }
   await ctx.lifecycle.start();
 }
 

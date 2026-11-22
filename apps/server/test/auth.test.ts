@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { auditLog, sessions } from '../src/db/schema.js';
 import { ADMIN, createTestApp, setupAdmin, type TestApp } from './helpers.js';
+import { ACCOUNT_MAX_FAILURES } from '../src/services/auth.js';
 
 let t: TestApp;
 beforeEach(async () => {
@@ -133,6 +134,47 @@ describe('login, me, logout', () => {
     expect(codes[5]).toBe(429);
     const last = await t.app.inject({ method: 'POST', url: '/api/auth/login', payload: ADMIN });
     expect(last.json().error.code).toBe('RATE_LIMITED');
+  });
+
+  it('limits wrong passwords per account, whatever the IP', async () => {
+    await setupAdmin(t.app);
+    const attempt = (i: number, password: string) =>
+      t.app.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        payload: { email: ADMIN.email, password },
+        remoteAddress: `10.0.${Math.floor(i / 250)}.${(i % 250) + 1}`,
+      });
+    for (let i = 0; i < ACCOUNT_MAX_FAILURES; i++) {
+      expect((await attempt(i, 'wrong')).statusCode).toBe(401);
+    }
+    const blocked = await attempt(100, ADMIN.password);
+    expect(blocked.statusCode).toBe(429);
+    expect(blocked.json().error.code).toBe('RATE_LIMITED');
+    // An unknown email is not affected (and reveals nothing).
+    const unknown = await t.app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { email: 'nobody@example.com', password: 'wrong' },
+      remoteAddress: '10.9.9.9',
+    });
+    expect(unknown.statusCode).toBe(401);
+  });
+
+  it('resets the per-account count after a successful login', async () => {
+    await setupAdmin(t.app);
+    const attempt = (i: number, password: string) =>
+      t.app.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        payload: { email: ADMIN.email, password },
+        remoteAddress: `10.1.0.${i + 1}`,
+      });
+    for (let i = 0; i < ACCOUNT_MAX_FAILURES - 1; i++) await attempt(i, 'wrong');
+    expect((await attempt(50, ADMIN.password)).statusCode).toBe(200);
+    for (let i = 0; i < ACCOUNT_MAX_FAILURES - 1; i++) {
+      expect((await attempt(60 + i, 'wrong')).statusCode).toBe(401);
+    }
   });
 
   it('rotates the session on login', async () => {
